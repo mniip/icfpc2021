@@ -1,0 +1,7 @@
+resolver: lts-18.1
+
+packages:
+  - splice
+
+extra-deps:
+  - ghc-paths-0.1.0.12@sha256:afdfdb6584f39e821b2b7130e12007bf3ad87401d86f5105eead059c150dc81d,657
