@@ -43,9 +43,10 @@ main = do
   let initViewPort ctrl = do
         writeIORef vpRef (controllerModifyViewPort ctrl)
         controllerModifyViewPort ctrl $ \_ -> pure $ boundingViewPort hole
-  let vertices = fromIntegerPointList $ fromPair <$> case eSolution of
-        Left _ -> figVertices (prFigure problem)
-        Right sol -> solVertices sol
+  let origVertices = fromIntegerPointList $ fromPair <$> figVertices (prFigure problem)
+  let vertices = case eSolution of
+        Left _ -> origVertices
+        Right sol -> fromIntegerPointList $ fromPair <$> solVertices sol
   interactIO
     FullScreen
     black
@@ -55,7 +56,7 @@ main = do
           modVP vp
       , wHole = hole
       , wGrid = boundingGrid hole
-      , wEdges = (\(Pair u v) -> (u, v, dist (vertices !! u) (vertices !! v))) <$> figEdges (prFigure problem)
+      , wEdges = (\(Pair u v) -> (u, v, dist (origVertices !! u) (origVertices !! v))) <$> figEdges (prFigure problem)
       , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
@@ -162,14 +163,17 @@ worldPicture world = pure $ Pictures
   , figurePicture (wEpsilon world) (wEdges world) (wVertices world) (wSelection world)
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
-  , Color white $ scorePicture (wGrid world) (dislikes (wHole world) (wVertices world))
+  , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
   ]
   where
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
 
-scorePicture :: (Point, Point) -> Integer -> Picture
-scorePicture ((minX, _), (_, maxY)) score = Translate (fromInteger minX) (fromInteger $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show score
+valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> Bool
+valid eps bs es vs = all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v) && canStretch eps d (vs !! u, vs !! v) == EQ) $ es
+
+scorePicture :: (Point, Point) -> Bool -> Integer -> Picture
+scorePicture ((minX, _), (_, maxY)) val score = Translate (fromInteger minX) (fromInteger $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (val, score)
 
 gridPicture :: (Point, Point) -> Picture
 gridPicture ((minX, minY), (maxX, maxY)) = Pictures $
@@ -206,7 +210,7 @@ boundariesPicture _ Nothing _ _ _ = Blank
 boundariesPicture eps (Just i) is xs bs = Pictures
   [ Color clr $ Polygon [(x - 0.5, y - 0.5), (x + 0.5, y - 0.5), (x + 0.5, y + 0.5), (x - 0.5, y + 0.5), (x - 0.5, y - 0.5)]
   | (coord, p) <- M.toList coords
-  , let q = fromIntegral p / fromIntegral (length jss)
+  , let q = fromIntegral (p - 1) / fromIntegral (length jss - 1)
   , let clr = withAlpha 0.5 $ mixColors (1 - q) q red green
   , let (x, y) = fromIntegerPoint coord
   ]
