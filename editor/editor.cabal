@@ -6,6 +6,6 @@ maintainer:         mniip@mniip.com
 
 executable editor
     main-is:          Main.hs
-    build-depends:    base >=4.14, gloss, io
+    build-depends:    base >=4.14, gloss, io, bytestring
     hs-source-dirs:   app
     default-language: Haskell2010
