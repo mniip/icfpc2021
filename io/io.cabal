@@ -1,0 +1,12 @@
+cabal-version:      2.4
+name:               io
+version:            0.1.0.0
+author:             mniip
+maintainer:         mniip@mniip.com
+
+library
+    exposed-modules:    ICFPC.JSON
+                      , ICFPC.JSON.Options
+    build-depends:    base ^>=4.14, aeson, vector, bytestring
+    hs-source-dirs:   src
+    default-language: Haskell2010
