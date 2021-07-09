@@ -103,3 +103,28 @@ type Figure = [Point]
 
 dislikes :: Polygon -> Figure -> Integer
 dislikes hole pose = sum [ minimum [dist h v | v <- pose] | h <- hole]
+
+-- Integer square root
+isqrt :: Integral a => a -> a
+isqrt n = go (next n) n
+    where next xk = (xk + (n `div` xk)) `div` 2
+          go xk xkm1 = let xkp1 = next xk
+                       in if xkp1 == xk || xkp1 == xkm1 
+                          then min xk xkm1
+                          else go xkp1 xk
+
+-- Given epsilon and original length, list all points within stretching distance
+stretchAnnulus :: Epsilon -> Dist -> [Point]
+stretchAnnulus eps d = rightUpper ++
+                       (reflX rightUpper) ++ -- upper left
+                       (reflY rightUpper) ++ -- down right
+                       (reflX $ reflY rightUpper) ++ -- down left
+                       cross
+    where (lower, upper) = stretchInterval eps d
+          sqrtUpper = isqrt upper
+          inside = filter (\q -> lower <= dist (0,0) q && dist (0,0) q <= upper)
+          rightUpper = inside [(x, y) | x <- [1..sqrtUpper], y <- [1..sqrtUpper]]
+          cross = inside $ [(x, 0) | x <- [-sqrtUpper .. sqrtUpper]] ++
+                           [(0, y) | y <- [-sqrtUpper .. sqrtUpper], y /= 0]
+          reflX = map (\(x, y) -> (-x, y))
+          reflY = map (\(x, y) -> (x, -y))
