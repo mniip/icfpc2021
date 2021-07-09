@@ -54,7 +54,7 @@ type Polygon = [Point]
 
 -- [1, 2, 3] -> [(1,2), (2,3), (3,1)]
 cyclePairs :: [a] -> [(a, a)]
-cyclePairs ls = zip ls (tail ls ++ [head ls])
+cyclePairs ls = zip ls (tail ls ++ take 1 ls)
 
 -- Check that a point is inside a polygon
 pointInPolygon :: Polygon -> Point -> Bool
@@ -73,12 +73,16 @@ segmentInPolygon ps s@(a, b) = pointInPolygon ps a &&
                                pointInPolygon ps b && -- Both ends are inside
                                not (any (properIntersectSegments s) (cyclePairs ps)) -- ps does not intersect edges (but may touch)
 
+type Dist = Integer
+
 -- Distance squared
-dist :: Point -> Point -> Integer
+dist :: Point -> Point -> Dist
 dist (x, y) (x', y') = (x-x')^2 + (y-y')^2
 
-distSeg :: Segment -> Integer
+distSeg :: Segment -> Dist
 distSeg (a, b) = dist a b
+
+type Epsilon = Integer
 
 -- Given epsilon and original length, return a range of allowed lengths
 stretchInterval :: Integer -> Integer -> (Integer, Integer)
@@ -88,9 +92,12 @@ stretchInterval eps d = (max 0 lower, upper)
           upper = (d*(1000000 + eps)) `div` 1000000
 
 -- Given epsilon, original length and a segment, check if it can stretch
-canStretch :: Integer -> Integer -> Segment -> Bool
-canStretch eps d s = 1000000*(abs $ d - d') <= eps*d
-    where d' = distSeg s
+canStretch :: Epsilon -> Dist -> Segment -> Ordering
+canStretch eps d s
+  | 1000000 * (d' - d) > eps * d = GT
+  | 1000000 * (d - d') > eps * d = LT
+  | otherwise = EQ
+  where d' = distSeg s
 
 type Figure = [Point]
 

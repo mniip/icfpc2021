@@ -4,24 +4,26 @@ module Main where
 import System.Environment
 import Data.IORef
 import Data.List
-import Graphics.Gloss
+import Graphics.Gloss hiding (Point)
 import Graphics.Gloss.Data.ViewPort
 import qualified Graphics.Gloss.Data.Point.Arithmetic as P
-import Graphics.Gloss.Data.Picture
-import Graphics.Gloss.Interface.IO.Interact
+import Graphics.Gloss.Data.Picture hiding (Point)
+import Graphics.Gloss.Interface.IO.Interact hiding (Point)
 import qualified Data.ByteString.Lazy as BSL
 import Control.Arrow
 
 import ICFPC.JSON
+import ICFPC.Geometry
 
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
-  , wHole :: [(Integer, Integer)]
-  , wGrid :: ((Integer, Integer), (Integer, Integer))
-  , wEdges :: [(Int, Int)]
-  , wVertices :: [(Integer, Integer)]
-  , wMouseCoords :: (Integer, Integer)
+  , wHole :: Polygon
+  , wGrid :: (Point, Point)
+  , wEdges :: [(Int, Int, Dist)]
+  , wVertices :: [Point]
+  , wMouseCoords :: Point
   , wDragging :: Maybe Int
+  , wEpsilon :: Integer
   }
 
 main :: IO ()
@@ -33,6 +35,7 @@ main = do
   let initViewPort ctrl = do
         writeIORef vpRef (controllerModifyViewPort ctrl)
         controllerModifyViewPort ctrl $ \_ -> pure $ boundingViewPort hole
+  let vertices = fromIntegerPointList $ fromPair <$> figVertices (prFigure problem)
   interactIO
     FullScreen
     black
@@ -42,10 +45,11 @@ main = do
           modVP vp
       , wHole = hole
       , wGrid = boundingGrid hole
-      , wEdges = fromPair <$> figEdges (prFigure problem)
-      , wVertices = fromIntegerPointList $ fromPair <$> figVertices (prFigure problem)
+      , wEdges = (\(Pair u v) -> (u, v, dist (vertices !! u) (vertices !! v))) <$> figEdges (prFigure problem)
+      , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
+      , wEpsilon = prEpsilon problem
       }
     worldPicture
     onEvent
@@ -90,34 +94,52 @@ onEvent event world = pure world
 
 worldPicture :: World -> IO Picture
 worldPicture world = pure $ Pictures
-  [ Color (greyN 0.5) $ gridPicture (wGrid world)
+  [ Color (greyN 0.25) $ gridPicture (wGrid world)
   , Color red $ holePicture (wHole world)
-  , Color green $ figurePicture (wEdges world) (wVertices world)
-  , case fromIntegerPoint $ wMouseCoords world of (x, y) -> Color blue $ Translate x y $ ThickCircle 0.25 0.5
+  , boundariesPicture (wEpsilon world) (wDragging world) (wEdges world) (wVertices world)
+  , figurePicture (wEpsilon world) (wEdges world) (wVertices world)
+  , cursorPicture $ wMouseCoords world
   ]
 
-gridPicture :: ((Integer, Integer), (Integer, Integer)) -> Picture
+gridPicture :: (Point, Point) -> Picture
 gridPicture ((minX, minY), (maxX, maxY)) = Pictures $
   [ Line $ fromIntegerPointList [(x, minY), (x, maxY)] | x <- [minX .. maxX]] <>
   [ Line $ fromIntegerPointList [(minX, y), (maxX, y)] | y <- [minY .. maxY]]
 
-figurePicture :: [(Int, Int)] -> [(Integer, Integer)] -> Picture
-figurePicture is xs = Pictures $
-  [Line $ fromIntegerPointList [xs !! u, xs !! v] | (u, v) <- is] <>
-  [Translate x y $ ThickCircle 0.25 0.5 | (x, y) <- fromIntegerPointList xs]
+figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Picture
+figurePicture eps is xs = Pictures $
+  [ Color (stretchColor $ canStretch eps origD (xs !! u, xs !! v)) $ Line $
+    fromIntegerPointList [xs !! u, xs !! v]
+  | (u, v, origD) <- is ] <>
+  [Color green $ Translate x y $ ThickCircle 0.25 0.5 | (x, y) <- fromIntegerPointList xs]
+  where
+    stretchColor LT = yellow
+    stretchColor GT = cyan
+    stretchColor EQ = green
 
-holePicture :: [(Integer, Integer)] -> Picture
+boundariesPicture :: Epsilon -> Maybe Int -> [(Int, Int, Dist)] -> [Point] -> Picture
+boundariesPicture _ Nothing _ _ = Blank
+boundariesPicture eps (Just i) is xs = Pictures
+  [ Color (withAlpha 0.3 red) $ Translate x y $ ThickCircle ((sqrt minD + sqrt maxD) / 2) (sqrt maxD - sqrt minD)
+  | (j, origD) <- [(j, d) | (i', j, d) <- is, i' == i] <> [(j, d) | (j, i', d) <- is, i' == i]
+  , let (x, y) = fromIntegerPoint $ xs !! j
+  , let minD = max 0 $ fromInteger origD * (1 - fromInteger eps / 1000000)
+  , let maxD = fromInteger origD * (1 + fromInteger eps / 1000000)
+  ]
+
+holePicture :: Polygon -> Picture
 holePicture xs = Pictures $
   (Line $ fromIntegerPointList $ xs <> take 1 xs) :
   [Translate x y $ ThickCircle 0.125 0.25 | (x, y) <- fromIntegerPointList xs]
 
-cursorPicture :: (Integer, Integer) -> Picture
-cursorPicture _ = Blank
+cursorPicture :: Point -> Picture
+cursorPicture coords = case fromIntegerPoint coords of
+  (x, y) -> Color blue $ Translate x y $ ThickCircle 0.25 0.5
 
-fromIntegerPoint :: Num a => (Integer, Integer) -> (a, a)
+fromIntegerPoint :: Num a => Point -> (a, a)
 fromIntegerPoint = fromInteger *** fromInteger
 
-fromIntegerPointList :: Num a => [(Integer, Integer)] -> [(a, a)]
+fromIntegerPointList :: Num a => [Point] -> [(a, a)]
 fromIntegerPointList = map fromIntegerPoint
 
 fromPair :: Pair a -> (a, a)
