@@ -82,9 +82,10 @@ distSeg (a, b) = dist a b
 
 -- Given epsilon and original length, return a range of allowed lengths
 stretchInterval :: Integer -> Integer -> (Integer, Integer)
-stretchInterval eps d = (lower, upper)
-    where lower = (d*(1000000 - eps)) `mod` 1000000
-          upper = (d*(1000000 + eps)) `mod` 1000000
+stretchInterval eps d = (max 0 lower, upper)
+    where fdiv a b = negate ((negate a) `div` b)
+          lower = (d*(1000000 - eps)) `fdiv` 1000000
+          upper = (d*(1000000 + eps)) `div` 1000000
 
 -- Given epsilon, original length and a segment, check if it can stretch
 canStretch :: Integer -> Integer -> Segment -> Bool
