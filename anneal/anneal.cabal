@@ -3,7 +3,6 @@ name:               anneal
 version:            0.1.0.0
 author:             mniip
 maintainer:         mniip@mniip.com
-extra-source-files: CHANGELOG.md
 
 executable anneal
     main-is:          Main.hs
