@@ -69,10 +69,7 @@ main = do
 
 onEvent :: Event -> World -> IO World
 onEvent (EventMotion coords) world = do
-  vpRef <- newIORef undefined
-  wModifyViewPort world $ \vp -> writeIORef vpRef vp >> pure vp
-  vp <- readIORef vpRef
-  let newCoords = round *** round $ invertViewPort vp coords
+  newCoords <- getMousePoint world coords
   let world' = world { wMouseCoords = newCoords }
   case wDragging world' of
     Nothing -> case wSelectionRect world' of
@@ -86,10 +83,7 @@ onEvent (EventMotion coords) world = do
         , wDragging = Just newCoords
         }
 onEvent (EventKey (MouseButton LeftButton) Down _ coords) world = do
-  vpRef <- newIORef undefined
-  wModifyViewPort world $ \vp -> writeIORef vpRef vp >> pure vp
-  vp <- readIORef vpRef
-  let newCoords = round *** round $ invertViewPort vp coords
+  newCoords <- getMousePoint world coords
   case elemIndex (wMouseCoords world) (wVertices world) of
     Nothing -> pure world { wSelectionRect = Just (newCoords, newCoords) }
     Just i -> if S.null (wSelection world) || i `S.notMember` wSelection world
@@ -129,13 +123,35 @@ onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = do
       , viewPortTranslate = viewPortTranslate vp P.+ (1 / newScale P.* coords) P.- (1 / oldScale P.* coords)
       }
   pure world
-onEvent (EventKey (Char 'q') Down _ _) world = exitSuccess
+onEvent (EventKey (SpecialKey KeyEsc) Down _ _) world = exitSuccess
 onEvent (EventKey (Char 's') Down _ _) world = do
   BSL.writeFile (wSaveFile world) $ encodeSolution Solution
     { solVertices = (\(x, y) -> Pair x y) <$> wVertices world
     }
   pure world
+onEvent (EventKey (Char 'q') Down _ coord) world = do
+  (mx, my) <- getMousePoint world coord
+  let rotate (x, y) = (mx - (y - my), my + (x - mx))
+  let newVertices = foldl' (\xs i -> withNth i rotate xs) (wVertices world) $ S.toList $ wSelection world
+  pure world { wVertices = newVertices }
+onEvent (EventKey (Char 'e') Down _ coord) world = do
+  (mx, my) <- getMousePoint world coord
+  let rotate (x, y) = (mx + (y - my), my - (x - mx))
+  let newVertices = foldl' (\xs i -> withNth i rotate xs) (wVertices world) $ S.toList $ wSelection world
+  pure world { wVertices = newVertices }
+onEvent (EventKey (Char 'f') Down _ coord) world = do
+  (mx, _) <- getMousePoint world coord
+  let flipping (x, y) = (2 * mx - x, y)
+  let newVertices = foldl' (\xs i -> withNth i flipping xs) (wVertices world) $ S.toList $ wSelection world
+  pure world { wVertices = newVertices }
 onEvent event world = pure world
+
+getMousePoint :: World -> (Float, Float) -> IO Point
+getMousePoint world coords= do
+  vpRef <- newIORef undefined
+  wModifyViewPort world $ \vp -> writeIORef vpRef vp >> pure vp
+  vp <- readIORef vpRef
+  pure $ round *** round $ invertViewPort vp coords
 
 worldPicture :: World -> IO Picture
 worldPicture world = pure $ Pictures
