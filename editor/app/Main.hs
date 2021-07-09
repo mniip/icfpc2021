@@ -1,7 +1,9 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, TypeApplications #-}
 module Main where
 
+import Control.Exception
 import System.Environment
+import System.Exit
 import Data.IORef
 import Data.List
 import Graphics.Gloss hiding (Point)
@@ -27,18 +29,22 @@ data World = World
   , wSelectionRect :: Maybe (Point, Point)
   , wDragging :: Maybe Point
   , wEpsilon :: Integer
+  , wSaveFile :: FilePath
   }
 
 main :: IO ()
 main = do
-  [probFile] <- getArgs
+  [probFile, solFile] <- getArgs
   vpRef <- newIORef $ error "no viewport"
   problem <- decodeProblem <$> BSL.readFile probFile
+  eSolution <- try @SomeException $ evaluate =<< decodeSolution <$> BSL.readFile solFile
   let hole = fromPair <$> prHole problem
   let initViewPort ctrl = do
         writeIORef vpRef (controllerModifyViewPort ctrl)
         controllerModifyViewPort ctrl $ \_ -> pure $ boundingViewPort hole
-  let vertices = fromIntegerPointList $ fromPair <$> figVertices (prFigure problem)
+  let vertices = fromIntegerPointList $ fromPair <$> case eSolution of
+        Left _ -> figVertices (prFigure problem)
+        Right sol -> solVertices sol
   interactIO
     FullScreen
     black
@@ -55,6 +61,7 @@ main = do
       , wEpsilon = prEpsilon problem
       , wSelection = S.empty
       , wSelectionRect = Nothing
+      , wSaveFile = solFile
       }
     worldPicture
     onEvent
@@ -85,14 +92,12 @@ onEvent (EventKey (MouseButton LeftButton) Down _ coords) world = do
   let newCoords = round *** round $ invertViewPort vp coords
   case elemIndex (wMouseCoords world) (wVertices world) of
     Nothing -> pure world { wSelectionRect = Just (newCoords, newCoords) }
-    Just i -> if S.null $ wSelection world
+    Just i -> if S.null (wSelection world) || i `S.notMember` wSelection world
       then pure world
             { wSelection = S.singleton i
             , wDragging = Just newCoords
             }
-      else if i `S.member` wSelection world
-        then pure world { wDragging = Just newCoords }
-        else pure world
+      else pure world { wDragging = Just newCoords }
 onEvent (EventKey (MouseButton LeftButton) Up _ _) world = do
   case wSelectionRect world of
     Nothing -> pure world { wDragging = Nothing }
@@ -123,6 +128,12 @@ onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = do
       { viewPortScale = newScale
       , viewPortTranslate = viewPortTranslate vp P.+ (1 / newScale P.* coords) P.- (1 / oldScale P.* coords)
       }
+  pure world
+onEvent (EventKey (Char 'q') Down _ _) world = exitSuccess
+onEvent (EventKey (Char 's') Down _ _) world = do
+  BSL.writeFile (wSaveFile world) $ encodeSolution Solution
+    { solVertices = (\(x, y) -> Pair x y) <$> wVertices world
+    }
   pure world
 onEvent event world = pure world
 
