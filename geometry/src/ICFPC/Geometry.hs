@@ -128,3 +128,20 @@ stretchAnnulus eps d = rightUpper ++
                            [(0, y) | y <- [-sqrtUpper .. sqrtUpper], y /= 0]
           reflX = map (\(x, y) -> (-x, y))
           reflY = map (\(x, y) -> (x, -y))
+
+boundingBox :: Polygon -> (Point, Point)
+boundingBox ps = ((left, down), (right, up))
+    where left = minimum $ map fst ps
+          right = maximum $ map fst ps
+          down = minimum $ map snd ps
+          up = maximum $ map snd ps
+
+-- Given a polygon, epsilon, a list of points with distances,
+-- return all points inside the polygon which satisfy annula constraints
+allowedPositions :: Polygon -> Epsilon -> [(Point, Dist)] -> [Point]
+allowedPositions poly eps edges = insidePolyAndAnnula
+    where ((left, down), (right, up)) = boundingBox poly
+          points = [(x, y) | x <- [left..right], y <- [down..up]]
+          goodEdge (q, d) p = canStretch eps d (q, p) == EQ
+          insideAnnula = foldl (\a e -> filter (goodEdge e) a) points edges
+          insidePolyAndAnnula = filter (pointInPolygon poly) insideAnnula
