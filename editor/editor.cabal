@@ -1,0 +1,11 @@
+cabal-version:      2.4
+name:               editor
+version:            0.1.0.0
+author:             mniip
+maintainer:         mniip@mniip.com
+
+executable editor
+    main-is:          Main.hs
+    build-depends:    base >=4.14, gloss, io
+    hs-source-dirs:   app
+    default-language: Haskell2010
