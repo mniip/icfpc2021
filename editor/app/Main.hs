@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, TypeApplications #-}
+{-# LANGUAGE BangPatterns, TypeApplications, TupleSections #-}
 module Main where
 
 import Control.Exception
@@ -14,6 +14,7 @@ import Graphics.Gloss.Interface.IO.Interact hiding (Point)
 import qualified Data.ByteString.Lazy as BSL
 import Control.Arrow
 import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 
 import ICFPC.JSON
 import ICFPC.Geometry
@@ -157,7 +158,7 @@ worldPicture :: World -> IO Picture
 worldPicture world = pure $ Pictures
   [ Color (greyN 0.25) $ gridPicture (wGrid world)
   , Color red $ holePicture (wHole world)
-  , boundariesPicture (wEpsilon world) (showBoundary (wSelection world) (wDragging world)) (wEdges world) (wVertices world)
+  , boundariesPicture (wEpsilon world) (showBoundary (wSelection world) (wDragging world)) (wEdges world) (wVertices world) (wHole world)
   , figurePicture (wEpsilon world) (wEdges world) (wVertices world) (wSelection world)
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
@@ -200,15 +201,18 @@ figurePicture eps is xs selected = Pictures $
     stretchColor EQ = green
     selectColor i = if i `S.member` selected then white else green
 
-boundariesPicture :: Epsilon -> Maybe Int -> [(Int, Int, Dist)] -> [Point] -> Picture
-boundariesPicture _ Nothing _ _ = Blank
-boundariesPicture eps (Just i) is xs = Pictures
-  [ Color (withAlpha 0.3 red) $ Translate x y $ ThickCircle ((sqrt minD + sqrt maxD) / 2) (sqrt maxD - sqrt minD)
-  | (j, origD) <- [(j, d) | (i', j, d) <- is, i' == i] <> [(j, d) | (j, i', d) <- is, i' == i]
-  , let (x, y) = fromIntegerPoint $ xs !! j
-  , let minD = max 0 $ fromInteger origD * (1 - fromInteger eps / 1000000)
-  , let maxD = fromInteger origD * (1 + fromInteger eps / 1000000)
+boundariesPicture :: Epsilon -> Maybe Int -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Picture
+boundariesPicture _ Nothing _ _ _ = Blank
+boundariesPicture eps (Just i) is xs bs = Pictures
+  [ Color clr $ Polygon [(x - 0.5, y - 0.5), (x + 0.5, y - 0.5), (x + 0.5, y + 0.5), (x - 0.5, y + 0.5), (x - 0.5, y - 0.5)]
+  | (coord, p) <- M.toList coords
+  , let q = fromIntegral p / fromIntegral (length jss)
+  , let clr = withAlpha 0.5 $ mixColors (1 - q) q red green
+  , let (x, y) = fromIntegerPoint coord
   ]
+  where
+    coords = M.unionsWith (+) [M.fromList $ (,1) <$> allowedPositions bs eps [(j, d)] | (j, d) <- jss]
+    jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] <> [(xs !! j, d) | (j, i', d) <- is, i' == i]
 
 holePicture :: Polygon -> Picture
 holePicture xs = Pictures $
