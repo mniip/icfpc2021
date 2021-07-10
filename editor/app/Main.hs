@@ -31,7 +31,19 @@ data World = World
   , wDragging :: Maybe Point
   , wEpsilon :: Int
   , wSaveFile :: FilePath
+  , wHideSimple :: Bool
   }
+
+
+neighbours :: [(Int, Int, Dist)] -> Int -> [(Int, Dist)]
+neighbours edges node = filterMap (\(i, j, d) -> if      i == node then Just (j, d)
+                                                 else if j == node then Just (i, d)
+                                                 else Nothing) edges
+  where
+    filterMap f l = map (maybe (0, 0) id) $ filter (/= Nothing) $ map f l
+
+isEdgeToSimple :: [(Int, Int, Dist)] -> (Int, Int) -> Bool
+isEdgeToSimple edges (u, v) = length (neighbours edges u) <= 2 || length (neighbours edges v) <= 2
 
 main :: IO ()
 main = do
@@ -64,6 +76,7 @@ main = do
       , wSelection = S.empty
       , wSelectionRect = Nothing
       , wSaveFile = solFile
+      , wHideSimple = False
       }
     worldPicture
     onEvent
@@ -149,6 +162,7 @@ onEvent (EventKey (Char 'f') Down _ coord) world = do
 onEvent (EventKey (Char '1') Down _ coord) world = do
   let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world)
   pure world { wVertices = newVertices }
+onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple = not (wHideSimple world) }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -162,8 +176,8 @@ worldPicture :: World -> IO Picture
 worldPicture world = pure $ Pictures
   [ Color (greyN 0.25) $ gridPicture (wGrid world)
   , Color red $ holePicture (wHole world)
-  , boundariesPicture (wEpsilon world) (showBoundary (wSelection world) (wDragging world)) (wEdges world) (wVertices world) (wHole world)
-  , figurePicture (wEpsilon world) (wEdges world) (wVertices world) (wSelection world)
+  , boundariesPicture (wEpsilon world) (showBoundary (wSelection world) (wDragging world)) (filterHide $ wEdges world) (wVertices world) (wHole world)
+  , figurePicture (wEpsilon world) (wEdges world) (wVertices world) (wSelection world) (wHideSimple world)
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
   , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
@@ -171,13 +185,16 @@ worldPicture world = pure $ Pictures
   where
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
+    filterHide :: [(Int, Int, Dist)] -> [(Int, Int, Dist)]
+    filterHide = if wHideSimple world then filter (\(u, v, d) -> not $ isEdgeToSimple (wEdges world) (u, v))
+                 else id
 
 valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
-valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es, 
+valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
                       all (\(u, v, d) -> canStretch eps d (vs !! u, vs !! v) == EQ) es)
 
 scorePicture :: (Point, Point) -> (Bool, Bool) -> Int -> Picture
-scorePicture ((minX, _), (_, maxY)) (inside, stretch) score = 
+scorePicture ((minX, _), (_, maxY)) (inside, stretch) score =
     Translate (fromIntegral minX) (fromIntegral $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (isinside, isstretch, score)
         where isinside = if inside then "OK" else "Not inside"
               isstretch = if stretch then "OK" else "Lengths"
@@ -218,13 +235,14 @@ adjustPoints eps is xs = zipWith go [0..] xs
     where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
           go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
 
-figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Picture
-figurePicture eps is xs selected = Pictures $
-  [ Color (stretchColor $ canStretch eps origD (xs !! u, xs !! v)) $ Line $
+figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Bool -> Picture
+figurePicture eps is xs selected hideSimple = Pictures $
+  [ Color (edgeColor u v origD) $ Line $
     fromIntegerPointList [xs !! u, xs !! v]
   | (u, v, origD) <- is ] <>
   [Color (selectColor i) $ Translate x y $ ThickCircle 0.25 0.5 | (i, (x, y)) <- zip [0..] $ fromIntegerPointList xs]
   where
+    edgeColor u v origD = if hideSimple && isEdgeToSimple is (u, v) then black else stretchColor $ canStretch eps origD (xs !! u, xs !! v)
     stretchColor LT = yellow
     stretchColor GT = cyan
     stretchColor EQ = green
