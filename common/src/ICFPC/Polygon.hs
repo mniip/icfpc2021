@@ -1,10 +1,11 @@
-{-# LANGUAGE BangPatterns, ViewPatterns #-}
+{-# LANGUAGE BangPatterns, DerivingStrategies, ViewPatterns #-}
 
 module ICFPC.Polygon where
 
 import qualified Data.IntMap.Strict as IM
 import Data.List (sortBy)
 import Data.Ord
+import Data.Ratio
 
 import ICFPC.Vector
 import qualified ICFPC.RLE as RLE
@@ -78,3 +79,32 @@ fillTriangle !a !b !c = IM.fromAscList $ if signedArea (mid .-. bottom) (top .-.
 
     floorDiv p q = p `div` q
     ceilDiv p q = -((-p) `div` q)
+
+data Q2 = Q2 {-# UNPACK #-} !(Ratio Int) !(Ratio Int)
+  deriving stock (Eq, Ord, Show)
+
+fillTriangleQ :: Q2 -> Q2 -> Q2 -> IM.IntMap RLE.RLESeq
+fillTriangleQ !a !b !c = IM.fromAscList $ if signedAreaQ (mid ~-~ bottom) (top ~-~ bottom) >= 0
+  then [(y, RLE.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [qCeil by .. qFloor my]] <>
+       [(y, RLE.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
+  else [(y, RLE.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [qCeil by .. qFloor my]] <>
+       [(y, RLE.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [qCeil my + 1 .. qFloor ty]]
+  where
+    [!bottom@(Q2 _ by), !mid@(Q2 _ my), !top@(Q2 _ ty)] = sortBy (comparing $ \(Q2 _ y) -> y) [a, b, c]
+
+    -- by => ay
+    segMin (Q2 ax ay) (Q2 bx by) !y
+      | ay == by = qCeil $ min ax bx
+      | otherwise = qCeil $ bx + (by - y % 1) * (ax - bx) / (by - ay)
+
+    -- by => ay
+    segMax (Q2 ax ay) (Q2 bx by) !y
+      | ay == by = qFloor $ max ax bx
+      | otherwise = qFloor $ bx + (by - y % 1) * (ax - bx) / (by - ay)
+
+    qFloor q = numerator q `div` denominator q
+    qCeil q = -((-numerator q) `div` denominator q)
+
+    Q2 x1 y1 ~-~ Q2 x2 y2 = Q2 (x1 - x2) (y1 - y2)
+
+    signedAreaQ (Q2 x1 y1) (Q2 x2 y2) = x1 * y2 - y1 * x2
