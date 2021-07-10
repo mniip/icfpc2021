@@ -133,7 +133,7 @@ vertexCircuit eps bound es numVs = do
   let !insides = S.fromList [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
   let !validSegments = -- lazy/memoized
           A.listArray ((minX, minY), (maxX, maxY))
-            [ A.listArray (minX, maxY)
+            [ A.listArray (minX, maxX)
               [ A.listArray (minY, maxY)
                 [ segmentInPolygon bound ((x1, y1), (x2, y2))
                 | y2 <- [minY..maxY]
@@ -179,14 +179,14 @@ iterateCircuit circ cb = go circ
           [] -> cb $ getSingleton . snd <$> nodes
           unresolved -> do
             let (!i, !locs) = minimumBy (comparing $ S.size . snd) unresolved
-            putStrLn $ "{ Forking in " <> show (S.size locs) <> " ways"
+            --putStrLn $ "{ Forking in " <> show (S.size locs) <> " ways"
             --putStrLn $ "{ Fixing " <> show i
             experiment_ circ locs $ \circ loc -> do
               triggerNode circ i (Finite $ S.singleton loc)
               --putStrLn $ "Assuming " <> show i <> " -> " <> show loc
               go circ
             --putStrLn $ "} Fixing " <> show i
-            putStrLn "}"
+            --putStrLn "}"
     isUnresolved (i, Finite s) | S.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
     getSingleton (Finite s) | Just m <- S.lookupMin s = m
