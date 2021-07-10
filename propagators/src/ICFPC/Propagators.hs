@@ -127,6 +127,23 @@ isZSubset _ Full = True
 isZSubset Full _ = False
 isZSubset (Finite s1) (Finite s2) = s1 `S.isSubsetOf` s2
 
+type RLE = IM.IntMap Int
+
+makeRLE :: Int -> [Bool] -> RLE
+makeRLE n = goOff n IM.empty
+  where
+    goOff !n !m [] = m
+    goOff !n !m (False:xs) = goOff (n + 1) m xs
+    goOff !n !m (True:xs) = goOn n (n + 1) m xs
+    goOn !s !n !m [] = IM.insert s n m
+    goOn !s !n !m (True:xs) = goOn s (n + 1) m xs
+    goOn !s !n !m (False:xs) = goOff (n + 1) (IM.insert s n m) xs
+
+indexRLE :: RLE -> Int -> Bool
+indexRLE m n = case IM.lookupLE n m of
+  Nothing -> False
+  Just (_, k) -> n < k
+
 vertexCircuit :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> Int -> IO (CircuitState (ZSet Point))
 vertexCircuit eps bound es numVs = do
   circ <- newCircuitState
@@ -135,15 +152,13 @@ vertexCircuit eps bound es numVs = do
   let !validSegments = -- lazy/memoized
           A.listArray ((minX, minY), (maxX, maxY))
             [ A.listArray (minX, maxX)
-              [ A.listArray (minY, maxY)
-                [ segmentInPolygon bound ((x1, y1), (x2, y2))
-                | y2 <- [minY..maxY]
-                ]
+              [ row
               | x2 <- [minX..maxX]
+              , let !row = makeRLE (fromInteger minY) $ [segmentInPolygon bound ((x1, y1), (x2, y2)) | y2 <- [minY..maxY]]
               ]
             | x1 <- [minX..maxX], y1 <- [minY..maxY]
             ]
-  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && validSegments A.! p A.! fst q A.! snd q
+  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && indexRLE (validSegments A.! p A.! fst q) (fromInteger $ snd q)
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
           [ (j, admDelta) -- asc list (!)
