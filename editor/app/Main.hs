@@ -19,7 +19,12 @@ import qualified Data.Map.Strict as M
 import ICFPC.JSON
 import ICFPC.Geometry
 
-data DragMode = Simple | FollowDelta | NearestValid deriving (Eq, Ord, Enum)
+data DragMode = Simple | FollowDelta | NearestValid deriving (Eq)
+
+next Simple = FollowDelta
+next FollowDelta = Simple -- NearestValid
+next NearestValid = Simple
+
 
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
@@ -31,7 +36,7 @@ data World = World
   , wSelection :: S.Set Int
   , wSelectionRect :: Maybe (Point, Point)
   , wDragging :: Maybe Point
-  , wSimpleDrag :: Bool
+  , wDragMode :: DragMode
   , wEpsilon :: Integer
   , wSaveFile :: FilePath
   }
@@ -63,7 +68,7 @@ main = do
       , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
-      , wSimpleDrag = False
+      , wDragMode = Simple
       , wEpsilon = prEpsilon problem
       , wSelection = S.empty
       , wSelectionRect = Nothing
@@ -81,21 +86,40 @@ getNeighbours edges nodes = foldl (addIfNeighbour) (nodes, S.empty) edges
                                               else if r `S.member` nodes && not (l `S.member` nodes) then (l `S.insert` all, l `S.insert` new)
                                               else acc
 
-moveSelected :: Point -> S.Set Int -> [Point] -> [Point]
-moveSelected delta selected verts = foldl' (\xs i -> if S.member i selected then withNth i (.+. delta) xs else xs) verts $ S.toList $ selected
-
-newVerticiesOnDrag :: (S.Set Int, S.Set Int) -> [Point] -> Point -> World -> [Point]
-newVerticiesOnDrag (all, new) result_acc delta world = if S.size new == 0 then result_acc
-                                                       else if dist_ok then moved
-                                                       else newVerticiesOnDrag (getNeighbours (wEdges world) all) moved delta world
+getNeighboursWithDists :: [(Int, Int, Dist)] -> Int -> [(Int, Dist)]
+getNeighboursWithDists edges node = filterMap (\(i, j, d) -> if i == node then Just (j, d)
+                                                             else if j == node then Just (i, d)
+                                                             else Nothing) edges
   where
-    moved = moveSelected delta new result_acc
+    filterMap f l = map (maybe (0, 0) id) $ filter (/= Nothing) $ map f l
+
+moveByDelta :: Point -> (S.Set Int, S.Set Int) -> [Point] -> [Point]
+moveByDelta delta = moveSelected (.+. delta)
+
+moveSelected :: (Point -> Point) -> (S.Set Int, S.Set Int) -> [Point] -> [Point]
+moveSelected mover (_, selected) verts = foldl' (\xs i -> if S.member i selected then withNth i mover xs else xs) verts $ S.toList $ selected
+
+moveToNearestValid :: World -> (S.Set Int, S.Set Int) -> [Point] -> [Point]
+moveToNearestValid w (all, new) verts = moveSelected moveToValidByAll (all, new) verts
+  where
+    moveToValidByAll p = getNearest (allowedPositions (wHole w) (wEpsilon w) neighbs)
+      where
+        Just p_idx = elemIndex p verts
+        neighbs = map (\(i, d) -> (verts !! i, d)) $ filter (\(i, d) -> i `S.member` (all `S.difference` new)) $ getNeighboursWithDists (wEdges w) p_idx
+        getNearest ps = if null ps then p .+. (0, 1) else minimumBy (\p1 p2 -> compare (dist p p1) (dist p p2)) ps
+
+applyMoverBfs :: ((S.Set Int, S.Set Int) -> [Point] -> [Point]) -> (S.Set Int, S.Set Int) -> [Point] -> World -> [Point]
+applyMoverBfs mover (all, new) result_acc world = if S.size new == 0 then if S.size all == length result_acc then wVertices world else result_acc
+                                                  else if dist_ok then moved
+                                                  else applyMoverBfs mover (getNeighbours (wEdges world) all) moved world
+  where
+    moved = mover (all, new) result_acc
     (inside_ok, dist_ok) = validShort world moved
 
 onEvent :: Event -> World -> IO World
 onEvent (EventKey (Char 'd') Up _ _) world = do
   pure world
-    { wSimpleDrag = not (wSimpleDrag world)
+    { wDragMode = next (wDragMode world)
     }
 onEvent (EventMotion coords) world = do
   newCoords <- getMousePoint world coords
@@ -106,8 +130,10 @@ onEvent (EventMotion coords) world = do
       Just (tl, _) -> pure world' { wSelectionRect = Just (tl, newCoords) }
     Just prev -> do
       let delta = newCoords .-. prev
-      let newVertices = if wSimpleDrag world then foldl' (\xs i -> withNth i (.+. delta) xs) (wVertices world') $ S.toList $ wSelection world'
-                        else newVerticiesOnDrag (wSelection world', wSelection world') (wVertices world') delta world'
+      let newVertices = case wDragMode world of
+                          Simple       -> moveSelected (.+. delta) (wSelection world', wSelection world') (wVertices world')
+                          FollowDelta  -> applyMoverBfs (moveByDelta delta) (wSelection world', wSelection world') (wVertices world') world'
+                          NearestValid -> applyMoverBfs (moveToNearestValid world') (wSelection world', wSelection world') (wVertices world') world'
       pure world'
         { wVertices = newVertices
         , wDragging = Just newCoords
