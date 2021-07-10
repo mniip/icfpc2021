@@ -215,7 +215,8 @@ adjustPoint eps d p q =
 -- Stretch or contract edges
 adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
 adjustPoints eps is xs = zipWith go [0..] xs
-    where go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is)
+    where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
+          go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
 
 figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Picture
 figurePicture eps is xs selected = Pictures $
