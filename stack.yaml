@@ -5,3 +5,4 @@ packages:
   - geometry
   - editor
   - anneal
+  - rate

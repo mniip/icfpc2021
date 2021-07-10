@@ -28,16 +28,18 @@ main = do
   gen <- newIOGenM =<< newStdGen
   let
     go best temp vs = do
-      vs' <- pickNeighbor eps boundary edges gen 16 temp vs
+      vs' <- pickNeighbor eps boundary edges gen 64 temp vs
       let !e = energy eps boundary edges vs'
       let !sc@(validity, _, score) = (isValid eps boundary edges vs', e, dislikes boundary (IM.elems vs'))
       when (sc < best) $ do
         putStrLn $ solFile <> " New best score: " <> show sc
         BSL.writeFile solFile $ encodeSolution $ Solution $ outputVertices vs'
       when (validity == Ok && score == 0) exitSuccess
-      when (e < temp / 100) $ do
-        putStrLn $ solFile <> " ran out of juice"
-        exitFailure
-      go (min sc best) (if validity == Ok then temp * 0.999 else min temp $ e / 10) vs'
+      temp' <- if temp < e / 100
+        then do
+          putStrLn $ solFile <> " ran out of juice: " <> show sc
+          pure 300
+        else pure $ temp * 0.9999
+      go (min sc best) temp' vs'
   let !e = energy eps boundary edges vertices
   go (isValid eps boundary edges vertices, e, dislikes boundary (IM.elems vertices)) e vertices
