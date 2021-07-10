@@ -6,14 +6,14 @@ maintainer:         mniip@mniip.com
 
 library
     exposed-modules:    ICFPC.Propagators
-    build-depends:    base >= 4.14, containers, transformers, geometry, array, async
+    build-depends:    base >= 4.14, containers, transformers, common, array, async
     hs-source-dirs:   src
     default-language: Haskell2010
     ghc-options:      -O2
 
 executable propagate
     main-is:            Main.hs
-    build-depends:    base >=4.14, io, geometry, containers, bytestring, propagators, async
+    build-depends:    base >=4.14, io, common, containers, bytestring, propagators, async
     hs-source-dirs:   app
     default-language: Haskell2010
     ghc-options:      -O2 -threaded

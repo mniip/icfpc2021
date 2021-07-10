@@ -2,8 +2,7 @@ resolver: lts-18.1
 
 packages:
   - io
-  - geometry
+  - common
   - editor
   - anneal
-  - rate
   - propagators
