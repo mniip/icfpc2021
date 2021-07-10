@@ -10,6 +10,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
+import qualified Data.Array as A
 
 import ICFPC.Geometry
 
@@ -128,14 +129,25 @@ isZSubset (Finite s1) (Finite s2) = s1 `S.isSubsetOf` s2
 vertexCircuit :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> Int -> IO (CircuitState (ZSet Point))
 vertexCircuit eps bound es numVs = do
   circ <- newCircuitState
-  let !insides = case boundingBox bound of
-        ((minX, minY), (maxX, maxY)) -> S.fromList
-          [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
+  let bounds@((!minX, !minY), (!maxX, !maxY)) = boundingBox bound
+  let !insides = S.fromList [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
+  let !validSegments = -- lazy/memoized
+          A.listArray ((minX, minY), (maxX, maxY))
+            [ A.listArray (minX, maxX)
+              [ A.listArray (minY, maxY)
+                [ segmentInPolygon bound ((x1, y1), (x2, y2))
+                | y2 <- [minY..maxY]
+                ]
+              | x2 <- [minX..maxX]
+              ]
+            | x1 <- [minX..maxX], y1 <- [minY..maxY]
+            ]
+  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && validSegments A.! p A.! fst q A.! snd q
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
-          [ (j, admDelta)
+          [ (j, admDelta) -- asc list (!)
           | (j, dist) <- mapMaybe (neighborOf i) es
-          , let !admDelta = S.fromList $ stretchAnnulus eps dist
+          , let !admDelta = S.toAscList . S.fromList $ stretchAnnulus eps dist
           ]
     addNode circ Full $ \trigger old intersected new -> if old `isZSubset` intersected
       then pure ()
@@ -143,10 +155,8 @@ vertexCircuit eps bound es numVs = do
         Full -> pure () -- unreachable
         Finite new' -> do
           forM_ neighbors $ \(j, admDelta) -> do
-            let !admissible = S.unions
-                  [ S.filter (\other -> segmentInPolygon bound (pos, other)) $ S.mapMonotonic (.+. pos) admDelta
-                  | pos <- S.toList new'
-                  ]
+            let !admissible = S.fromList
+                  [other | pos <- S.toList new', delta <- admDelta, let !other = pos .+. delta, isValidSegment pos other]
             trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
   pure circ
@@ -169,14 +179,14 @@ iterateCircuit circ cb = go circ
           [] -> cb $ getSingleton . snd <$> nodes
           unresolved -> do
             let (!i, !locs) = minimumBy (comparing $ S.size . snd) unresolved
-            putStrLn $ "{ Forking in " <> show (S.size locs) <> " ways"
+            --putStrLn $ "{ Forking in " <> show (S.size locs) <> " ways"
             --putStrLn $ "{ Fixing " <> show i
             experiment_ circ locs $ \circ loc -> do
               triggerNode circ i (Finite $ S.singleton loc)
               --putStrLn $ "Assuming " <> show i <> " -> " <> show loc
               go circ
             --putStrLn $ "} Fixing " <> show i
-            putStrLn "}"
+            --putStrLn "}"
     isUnresolved (i, Finite s) | S.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
     getSingleton (Finite s) | Just m <- S.lookupMin s = m

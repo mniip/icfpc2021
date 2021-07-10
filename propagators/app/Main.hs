@@ -14,7 +14,6 @@ main :: IO ()
 main = do
   [probFile, solFile] <- getArgs
   problem <- decodeProblem <$> BSL.readFile probFile
-  --sol <- decodeSolution <$> BSL.readFile solFile
   let boundary = (\(Pair x y) -> (x, y)) <$> prHole problem
   let !vertices = (\(Pair x y) -> (x, y)) <$> figVertices (prFigure problem)
   let !edges = [(u, v, distSeg (vertices !! u, vertices !! v)) | Pair u v <- figEdges $ prFigure problem]
@@ -29,7 +28,7 @@ main = do
       let !score = dislikes boundary vs
       mBest <- readIORef bestRef
       when (maybe True (> score) mBest) $ do
-        putStrLn $ "New best: " <> show score
+        putStrLn $ solFile <> ": New best: " <> show score
         writeIORef bestRef (Just score)
         BSL.writeFile solFile $ encodeSolution $ Solution [Pair x y | (x, y) <- vs]
-    else putStrLn $ "Invalid (!?) " <> show vs
+    else putStrLn $ solFile <> ": Invalid (!?) " <> show vs
