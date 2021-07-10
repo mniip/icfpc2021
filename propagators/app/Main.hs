@@ -37,7 +37,7 @@ main = do
         isBest <- atomicModifyIORef' bestRef $ \mBest -> if maybe True (> score) mBest then (Just score, True) else (mBest, False)
         when isBest $ do
           putStrLn $ solFile <> ": New best: " <> show score
-          BSL.writeFile solFile $ encodeSolution $ Solution vs
+          BSL.writeFile solFile $ encodePose $ Pose vs []
       else putStrLn $ solFile <> ": Invalid (!?) " <> show vs
   forConcurrently_ boundary $ \p ->
     forM_ [0..numVs-1] $ \i -> do

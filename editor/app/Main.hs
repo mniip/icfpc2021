@@ -50,7 +50,7 @@ main = do
   [probFile, solFile] <- getArgs
   vpRef <- newIORef $ error "no viewport"
   problem <- decodeProblem <$> BSL.readFile probFile
-  eSolution <- try @SomeException $ evaluate =<< decodeSolution <$> BSL.readFile solFile
+  eSolution <- try @SomeException $ evaluate =<< decodePose <$> BSL.readFile solFile
   let hole = prHole problem
   let initViewPort ctrl = do
         writeIORef vpRef (controllerModifyViewPort ctrl)
@@ -58,7 +58,7 @@ main = do
   let origVertices = fromIntegerPointList $ figVertices (prFigure problem)
   let vertices = case eSolution of
         Left _ -> origVertices
-        Right sol -> fromIntegerPointList $ solVertices sol
+        Right sol -> fromIntegerPointList $ poseVertices sol
   interactIO
     FullScreen
     black
@@ -140,8 +140,9 @@ onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = do
   pure world
 onEvent (EventKey (SpecialKey KeyEsc) Down _ _) world = exitSuccess
 onEvent (EventKey (Char 's') Down _ _) world = do
-  BSL.writeFile (wSaveFile world) $ encodeSolution Solution
-    { solVertices = wVertices world
+  BSL.writeFile (wSaveFile world) $ encodePose Pose
+    { poseVertices = wVertices world
+    , poseBonuses = []
     }
   pure world
 onEvent (EventKey (Char 'q') Down _ coord) world = do

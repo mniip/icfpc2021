@@ -17,12 +17,12 @@ main :: IO ()
 main = do
   [probFile, solFile] <- getArgs
   problem <- decodeProblem <$> BSL.readFile probFile
-  eSolution <- try @SomeException $ evaluate =<< decodeSolution <$> BSL.readFile solFile
+  eSolution <- try @SomeException $ evaluate =<< decodePose <$> BSL.readFile solFile
   let boundary = prHole problem
   let !edges = mkEdges (mkVertices $ figVertices $ prFigure problem) (figEdges $ prFigure problem)
   let !vertices = mkVertices $ case eSolution of
         Left _ -> figVertices (prFigure problem)
-        Right sol -> solVertices sol
+        Right sol -> poseVertices sol
   let !eps = prEpsilon problem
 
   gen <- newIOGenM =<< newStdGen
@@ -33,7 +33,7 @@ main = do
       let !sc@(validity, _, score) = (isValid eps boundary edges vs', e, dislikes boundary (IM.elems vs'))
       when (sc < best) $ do
         putStrLn $ solFile <> " New best score: " <> show sc
-        BSL.writeFile solFile $ encodeSolution $ Solution $ outputVertices vs'
+        BSL.writeFile solFile $ encodePose $ Pose (outputVertices vs') []
       when (validity == Ok && score == 0) exitSuccess
       temp' <- if temp < e / 100
         then do

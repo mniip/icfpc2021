@@ -1,11 +1,11 @@
-{-# LANGUAGE DerivingStrategies, TemplateHaskell, RecordWildCards, OverloadedStrings #-}
+{-# LANGUAGE DerivingStrategies, RecordWildCards, OverloadedStrings, LambdaCase #-}
 module ICFPC.JSON where
 
 import Data.Aeson
 import Data.Aeson.Types hiding (Pair)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Maybe
-import Data.Vector hiding (length)
+import Data.Vector hiding (length, null)
 
 type Pair a = (a, a)
 
@@ -20,12 +20,13 @@ parseJSONPair = withArray "Pair" $ \arr ->
 
 type Coord = Int
 type Idx = Int
+type ProblemId = Int
 
 data Figure = Figure
   { figVertices :: [Pair Coord]
   , figEdges :: [Pair Idx]
   }
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 instance ToJSON Figure where
   toJSON Figure{..} = object
@@ -38,18 +39,53 @@ instance FromJSON Figure where
     <$> explicitParseField (listParser parseJSONPair) obj "vertices"
     <*> explicitParseField (listParser parseJSONPair) obj "edges"
 
+data BonusType = Globalist | BreakALeg
+  deriving stock (Eq, Ord, Show)
+
+instance ToJSON BonusType where
+  toJSON Globalist = String "GLOBALIST"
+  toJSON BreakALeg = String "BREAK_A_LEG"
+
+instance FromJSON BonusType where
+  parseJSON (String "GLOBALIST") = pure Globalist
+  parseJSON (String "BREAK_A_LEG") = pure BreakALeg
+  parseJSON _ = fail "BonusType"
+
+data BonusDescription = BonusDescription
+  { bdPosition :: Pair Coord
+  , bdBonus :: BonusType
+  , bdTargetProblem :: ProblemId
+  }
+  deriving stock (Eq, Ord, Show)
+
+instance ToJSON BonusDescription where
+  toJSON BonusDescription{..} = object
+    [ "position" .= toJSONPair bdPosition
+    , "bonus" .= bdBonus
+    , "problem" .= bdTargetProblem
+    ]
+
+instance FromJSON BonusDescription where
+  parseJSON = withObject "BonusDescription" $ \obj -> BonusDescription
+    <$> explicitParseField parseJSONPair obj "position"
+    <*> obj .: "bonus"
+    <*> obj .: "problem"
+
 data Problem = Problem
   { prHole :: [Pair Coord]
   , prFigure :: Figure
   , prEpsilon :: Int
+  , prBonuses :: [BonusDescription]
   }
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 instance ToJSON Problem where
-  toJSON Problem{..} = object
+  toJSON Problem{..} = object $
     [ "hole" .= listValue toJSONPair prHole
     , "figure" .= prFigure
     , "epsilon" .= prEpsilon
+    ] <>
+    [ "bonuses" .= prBonuses | not $ null prBonuses
     ]
 
 instance FromJSON Problem where
@@ -57,20 +93,54 @@ instance FromJSON Problem where
     <$> explicitParseField (listParser parseJSONPair) obj "hole"
     <*> obj .: "figure"
     <*> obj .: "epsilon"
+    <*> (fromMaybe [] <$> obj .:? "bonuses")
 
-data Solution = Solution
-  { solVertices :: [Pair Coord]
+data BonusUse
+  = GlobalistUse
+  { buSourceProblem :: ProblemId
   }
-  deriving (Eq, Ord, Show)
+  | BreakALegUse
+  { buSourceProblem :: ProblemId
+  , buBrokenLeg :: Pair Idx
+  }
+  deriving stock (Eq, Ord, Show)
 
-instance ToJSON Solution where
-  toJSON Solution{..} = object
-    [ "vertices" .= listValue toJSONPair solVertices
+instance ToJSON BonusUse where
+  toJSON GlobalistUse{..} = object
+    [ "bonus" .= Globalist
+    , "problem" .= buSourceProblem
+    ]
+  toJSON BreakALegUse{..} = object
+    [ "bonus" .= BreakALeg
+    , "problem" .= buSourceProblem
+    , "edge" .= buBrokenLeg
     ]
 
-instance FromJSON Solution where
-  parseJSON = withObject "Solution" $ \obj -> Solution
+instance FromJSON BonusUse where
+  parseJSON = withObject "BonusUse" $ \obj -> obj .: "bonus" >>= \case
+    Globalist -> GlobalistUse
+      <$> obj .: "problem"
+    BreakALeg -> BreakALegUse
+      <$> obj .: "problem"
+      <*> explicitParseField parseJSONPair obj "edge"
+
+data Pose = Pose
+  { poseVertices :: [Pair Coord]
+  , poseBonuses :: [BonusUse]
+  }
+  deriving stock (Eq, Ord, Show)
+
+instance ToJSON Pose where
+  toJSON Pose{..} = object $
+    [ "vertices" .= listValue toJSONPair poseVertices
+    ] <>
+    [ "bonuses" .= poseBonuses | not $ null poseBonuses
+    ]
+
+instance FromJSON Pose where
+  parseJSON = withObject "Pose" $ \obj -> Pose
     <$> explicitParseField (listParser parseJSONPair) obj "vertices"
+    <*> (fromMaybe [] <$> obj .:? "bonuses")
 
 decodeProblem :: BSL.ByteString -> Problem
 decodeProblem = either error id . eitherDecode
@@ -78,8 +148,8 @@ decodeProblem = either error id . eitherDecode
 encodeProblem :: Problem -> BSL.ByteString
 encodeProblem = encode
 
-decodeSolution :: BSL.ByteString -> Solution
-decodeSolution = either error id . eitherDecode
+decodePose :: BSL.ByteString -> Pose
+decodePose = either error id . eitherDecode
 
-encodeSolution :: Solution -> BSL.ByteString
-encodeSolution = encode
+encodePose :: Pose -> BSL.ByteString
+encodePose = encode
