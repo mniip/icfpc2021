@@ -1,11 +1,11 @@
-{-# LANGUAGE BangPatterns, PatternSynonyms, ViewPatterns #-}
+{-# LANGUAGE BangPatterns, DerivingStrategies, PatternSynonyms, ViewPatterns #-}
 module ICFPC.Vector where
 
 import Data.Bits
 
 -- 2D vector: V2 x y
 data V2 = V2 {-# UNPACK #-} !Int {-# UNPACK #-} !Int
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 {-# INLINE packV2 #-}
 packV2 :: (Int, Int) -> V2
@@ -53,7 +53,7 @@ signedArea u v = ccw u `dot` v
 
 -- 2D line segment: S2 x1 y1 x2 y2
 data S2 = S2 {-# UNPACK #-} !Int {-# UNPACK #-} !Int {-# UNPACK #-} !Int {-# UNPACK #-} !Int
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 pattern S2V2 :: V2 -> V2 -> S2
 pattern S2V2{source, target} <- S2 x1 (V2 x1 -> source) x2 (V2 x2 -> target)

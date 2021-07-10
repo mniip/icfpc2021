@@ -2,7 +2,12 @@
 
 module ICFPC.Polygon where
 
+import qualified Data.IntMap.Strict as IM
+import Data.List (sortBy)
+import Data.Ord
+
 import ICFPC.Vector
+import qualified ICFPC.RLE as RLE
 
 data PolyVertex = PolyVertex
   { pVertex :: {-# UNPACK #-} !V2
@@ -43,3 +48,33 @@ polySignedArea2x :: Polygon -> Int
 polySignedArea2x (Polygon ((pVertex -> a):(pVertex -> b):vs)) = sum [signedArea ba (pVertex v .-. a) | v <- vs]
   where !ba = b .-. a
 polySignedArea2x _ = 0
+
+-- map from y to run of x's
+--    T         T
+--    |\       /|
+-- 1: | M  2: M |
+--    |/       \|
+-- y  B         B
+-- ^
+-- +>x
+fillTriangle :: V2 -> V2 -> V2 -> IM.IntMap RLE.RLESeq
+fillTriangle !a !b !c = IM.fromAscList $ if signedArea (mid .-. bottom) (top .-. bottom) >= 0
+  then [(y, RLE.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [by..my]] <> {- 1 -}
+       [(y, RLE.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [my+1..ty]]
+  else [(y, RLE.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [by..my]] <> {- 2 -}
+       [(y, RLE.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [my+1..ty]]
+  where
+    [!bottom@(V2 _ by), !mid@(V2 _ my), !top@(V2 _ ty)] = sortBy (comparing $ \(V2 _ y) -> y) [a, b, c]
+
+    -- by => ay
+    segMin (V2 ax ay) (V2 bx by) !y
+      | ay == by = min ax bx
+      | otherwise = bx + ceilDiv ((by - y) * (ax - bx)) (by - ay)
+
+    -- by => ay
+    segMax (V2 ax ay) (V2 bx by) !y
+      | ay == by = max ax bx
+      | otherwise = bx + floorDiv ((by - y) * (ax - bx)) (by - ay)
+
+    floorDiv p q = p `div` q
+    ceilDiv p q = -((-p) `div` q)
