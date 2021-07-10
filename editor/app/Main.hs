@@ -169,11 +169,15 @@ worldPicture world = pure $ Pictures
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
 
-valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> Bool
-valid eps bs es vs = all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v) && canStretch eps d (vs !! u, vs !! v) == EQ) $ es
+valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
+valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es, 
+                      all (\(u, v, d) -> canStretch eps d (vs !! u, vs !! v) == EQ) es)
 
-scorePicture :: (Point, Point) -> Bool -> Integer -> Picture
-scorePicture ((minX, _), (_, maxY)) val score = Translate (fromInteger minX) (fromInteger $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (val, score)
+scorePicture :: (Point, Point) -> (Bool, Bool) -> Integer -> Picture
+scorePicture ((minX, _), (_, maxY)) (inside, stretch) score = 
+    Translate (fromInteger minX) (fromInteger $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (isinside, isstretch, score)
+        where isinside = if inside then "OK" else "Not inside"
+              isstretch = if stretch then "OK" else "Lengths"
 
 gridPicture :: (Point, Point) -> Picture
 gridPicture ((minX, minY), (maxX, maxY)) = Pictures $

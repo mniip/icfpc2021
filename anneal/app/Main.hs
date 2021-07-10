@@ -9,7 +9,7 @@ import System.Random.Stateful
 import System.Exit
 import qualified Data.IntMap as IM
 
-import ICFPC.Geometry
+import ICFPC.Geometry hiding (isValid)
 import ICFPC.Annealing
 import ICFPC.JSON
 
