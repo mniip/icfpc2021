@@ -10,6 +10,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
+import qualified Data.Array as A
 
 import ICFPC.Geometry
 
@@ -128,9 +129,20 @@ isZSubset (Finite s1) (Finite s2) = s1 `S.isSubsetOf` s2
 vertexCircuit :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> Int -> IO (CircuitState (ZSet Point))
 vertexCircuit eps bound es numVs = do
   circ <- newCircuitState
-  let !insides = case boundingBox bound of
-        ((minX, minY), (maxX, maxY)) -> S.fromList
-          [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
+  let bounds@((!minX, !minY), (!maxX, !maxY)) = boundingBox bound
+  let !insides = S.fromList [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
+  let !validSegments = -- lazy/memoized
+          A.listArray ((minX, minY), (maxX, maxY))
+            [ A.listArray (minX, maxY)
+              [ A.listArray (minY, maxY)
+                [ segmentInPolygon bound ((x1, y1), (x2, y2))
+                | y2 <- [minY..maxY]
+                ]
+              | x2 <- [minX..maxX]
+              ]
+            | x1 <- [minX..maxX], y1 <- [minY..maxY]
+            ]
+  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && validSegments A.! p A.! fst q A.! snd q
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
           [ (j, admDelta)
@@ -144,9 +156,7 @@ vertexCircuit eps bound es numVs = do
         Finite new' -> do
           forM_ neighbors $ \(j, admDelta) -> do
             let !admissible = S.unions
-                  [ S.filter (\other -> segmentInPolygon bound (pos, other)) $ S.mapMonotonic (.+. pos) admDelta
-                  | pos <- S.toList new'
-                  ]
+                  [S.filter (isValidSegment pos) $ S.mapMonotonic (.+. pos) admDelta | pos <- S.toList new']
             trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
   pure circ
