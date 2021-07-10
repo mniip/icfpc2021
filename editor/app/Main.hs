@@ -19,6 +19,8 @@ import qualified Data.Map.Strict as M
 import ICFPC.JSON
 import ICFPC.Geometry
 
+data DragMode = Simple | FollowDelta | NearestValid deriving (Eq, Ord, Enum)
+
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
   , wHole :: Polygon
