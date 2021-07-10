@@ -29,6 +29,7 @@ data World = World
   , wSelection :: S.Set Int
   , wSelectionRect :: Maybe (Point, Point)
   , wDragging :: Maybe Point
+  , wSimpleDrag :: Bool
   , wEpsilon :: Integer
   , wSaveFile :: FilePath
   }
@@ -60,6 +61,7 @@ main = do
       , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
+      , wSimpleDrag = False
       , wEpsilon = prEpsilon problem
       , wSelection = S.empty
       , wSelectionRect = Nothing
@@ -69,7 +71,30 @@ main = do
     onEvent
     initViewPort
 
+getNeighbours :: [(Int, Int, Dist)] -> S.Set Int -> (S.Set Int, S.Set Int)
+getNeighbours edges nodes = foldl (addIfNeighbour) (nodes, S.empty) edges
+  where
+    addIfNeighbour :: (S.Set Int, S.Set Int) -> (Int, Int, Dist) -> (S.Set Int, S.Set Int)
+    addIfNeighbour acc@(all, new) (l, r, _) = if      l `S.member` nodes && not (r `S.member` nodes) then (r `S.insert` all, r `S.insert` new)
+                                              else if r `S.member` nodes && not (l `S.member` nodes) then (l `S.insert` all, l `S.insert` new)
+                                              else acc
+
+moveSelected :: Point -> S.Set Int -> [Point] -> [Point]
+moveSelected delta selected verts = foldl' (\xs i -> if S.member i selected then withNth i (.+. delta) xs else xs) verts $ S.toList $ selected
+
+newVerticiesOnDrag :: (S.Set Int, S.Set Int) -> [Point] -> Point -> World -> [Point]
+newVerticiesOnDrag (all, new) result_acc delta world = if S.size new == 0 then result_acc
+                                                       else if dist_ok then moved
+                                                       else newVerticiesOnDrag (getNeighbours (wEdges world) all) moved delta world
+  where
+    moved = moveSelected delta new result_acc
+    (inside_ok, dist_ok) = validShort world moved
+
 onEvent :: Event -> World -> IO World
+onEvent (EventKey (MouseButton MiddleButton) Up _ _) world = do
+  pure world
+    { wSimpleDrag = not (wSimpleDrag world)
+    }
 onEvent (EventMotion coords) world = do
   newCoords <- getMousePoint world coords
   let world' = world { wMouseCoords = newCoords }
@@ -79,7 +104,8 @@ onEvent (EventMotion coords) world = do
       Just (tl, _) -> pure world' { wSelectionRect = Just (tl, newCoords) }
     Just prev -> do
       let delta = newCoords .-. prev
-      let newVertices = foldl' (\xs i -> withNth i (.+. delta) xs) (wVertices world') $ S.toList $ wSelection world'
+      let newVertices = if wSimpleDrag world then foldl' (\xs i -> withNth i (.+. delta) xs) (wVertices world') $ S.toList $ wSelection world'
+                        else newVerticiesOnDrag (wSelection world', wSelection world') (wVertices world') delta world'
       pure world'
         { wVertices = newVertices
         , wDragging = Just newCoords
@@ -169,12 +195,15 @@ worldPicture world = pure $ Pictures
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
 
+validShort :: World -> [Point] -> (Bool, Bool)
+validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
+
 valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
-valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es, 
+valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
                       all (\(u, v, d) -> canStretch eps d (vs !! u, vs !! v) == EQ) es)
 
 scorePicture :: (Point, Point) -> (Bool, Bool) -> Integer -> Picture
-scorePicture ((minX, _), (_, maxY)) (inside, stretch) score = 
+scorePicture ((minX, _), (_, maxY)) (inside, stretch) score =
     Translate (fromInteger minX) (fromInteger $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (isinside, isstretch, score)
         where isinside = if inside then "OK" else "Not inside"
               isstretch = if stretch then "OK" else "Lengths"
