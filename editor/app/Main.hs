@@ -32,6 +32,8 @@ data World = World
   , wEpsilon :: Int
   , wSaveFile :: FilePath
   , wHideSimple :: Bool
+  , wVisualizeDislikes :: Bool
+  , wChains :: [(Int, Int, Dist)]
   }
 
 
@@ -44,6 +46,9 @@ neighbours edges node = filterMap (\(i, j, d) -> if      i == node then Just (j,
 
 isEdgeToSimple :: [(Int, Int, Dist)] -> (Int, Int) -> Bool
 isEdgeToSimple edges (u, v) = length (neighbours edges u) <= 2 || length (neighbours edges v) <= 2
+
+calcChains :: [(Int, Int, Dist)] -> [Point] -> [(Int, Int, Dist)]
+calcChains edges verts = edges -- TODO
 
 main :: IO ()
 main = do
@@ -59,6 +64,7 @@ main = do
   let vertices = case eSolution of
         Left _ -> origVertices
         Right sol -> fromIntegerPointList $ poseVertices sol
+  let edges = (\(u, v) -> (u, v, dist (origVertices !! u) (origVertices !! v))) <$> figEdges (prFigure problem)
   interactIO
     FullScreen
     black
@@ -68,7 +74,7 @@ main = do
           modVP vp
       , wHole = hole
       , wGrid = boundingGrid hole
-      , wEdges = (\(u, v) -> (u, v, dist (origVertices !! u) (origVertices !! v))) <$> figEdges (prFigure problem)
+      , wEdges = edges
       , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
@@ -77,6 +83,8 @@ main = do
       , wSelectionRect = Nothing
       , wSaveFile = solFile
       , wHideSimple = False
+      , wVisualizeDislikes = True
+      , wChains = calcChains edges vertices
       }
     worldPicture
     onEvent
@@ -163,7 +171,8 @@ onEvent (EventKey (Char 'f') Down _ coord) world = do
 onEvent (EventKey (Char '1') Down _ coord) world = do
   let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world)
   pure world { wVertices = newVertices }
-onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple = not (wHideSimple world) }
+onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple        = not (wHideSimple world) }
+onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes = not (wVisualizeDislikes world) }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -174,7 +183,7 @@ getMousePoint world coords= do
   pure $ round *** round $ invertViewPort vp coords
 
 worldPicture :: World -> IO Picture
-worldPicture world = pure $ Pictures
+worldPicture world = pure $ Pictures $
   [ Color (greyN 0.25) $ gridPicture (wGrid world)
   , Color red $ holePicture (wHole world)
   , boundariesPicture (wEpsilon world) (showBoundary (wSelection world) (wDragging world)) (filterHide $ wEdges world) (wVertices world) (wHole world)
@@ -182,13 +191,14 @@ worldPicture world = pure $ Pictures
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
   , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
-  ]
+  ] ++ circles
   where
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
     filterHide :: [(Int, Int, Dist)] -> [(Int, Int, Dist)]
     filterHide = if wHideSimple world then filter (\(u, v, d) -> not $ isEdgeToSimple (wEdges world) (u, v))
                  else id
+    circles = if wVisualizeDislikes world then [visualizeDislikesPicture (wHole world) (wVertices world)] else []
 
 valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
 valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
@@ -217,6 +227,12 @@ selectionPicture (Just ((x1, y1), (x2, y2))) = Line
   where
     (minX, minY) = fromIntegerPoint (min x1 x2, min y1 y2)
     (maxX, maxY) = fromIntegerPoint (max x1 x2, max y1 y2)
+
+visualizeDislikesPicture :: [Point] -> [Point] -> Picture
+visualizeDislikesPicture hole pose = Pictures $ map (\((x, y), r) -> Color blue $ Translate x y $ ThickCircle (sqrt $ fromIntegral r) 0.5) circles
+  where
+    circles = zip (fromIntegerPointList hole) [ minimum [dist h v | v <- pose] | h <- hole]
+
 
 vdiv (x,y) l = (x `div` l, y `div` l)
 vmul (x,y) l = (x*l, y*l)
