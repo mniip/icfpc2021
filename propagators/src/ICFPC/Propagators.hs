@@ -154,11 +154,11 @@ vertexCircuit eps bound es numVs = do
             [ A.listArray (minX, maxX)
               [ row
               | x2 <- [minX..maxX]
-              , let !row = makeRLE (fromInteger minY) $ [segmentInPolygon bound ((x1, y1), (x2, y2)) | y2 <- [minY..maxY]]
+              , let !row = makeRLE minY $ [segmentInPolygon bound ((x1, y1), (x2, y2)) | y2 <- [minY..maxY]]
               ]
             | x1 <- [minX..maxX], y1 <- [minY..maxY]
             ]
-  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && indexRLE (validSegments A.! p A.! fst q) (fromInteger $ snd q)
+  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && indexRLE (validSegments A.! p A.! fst q) (snd q)
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
           [ (j, admDelta) -- asc list (!)

@@ -16,3 +16,9 @@ fromList = IntPairMap . go IM.empty
     go !m [] = m
     go !m ((a, b, x):xs) = go (IM.alter (adding b x) a $ IM.alter (adding a x) b m) xs
     adding b x = Just . maybe (IM.singleton b x) (IM.insert b x)
+
+neighbors :: IntPairMap a -> Int -> [(Int, a)]
+neighbors (IntPairMap m) v =
+    case m IM.!? v of
+      Nothing -> []
+      Just m' -> IM.toList m'

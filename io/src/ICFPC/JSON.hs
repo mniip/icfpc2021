@@ -22,24 +22,24 @@ instance FromJSON a => FromJSON (Pair a) where
     then Pair <$> parseJSON (arr ! 0) <*> parseJSON (arr ! 1)
     else fail "expected array of length 2"
 
-type Coord = Integer
+type Coord = Int
 type Idx = Int
 
 data Figure = Figure
-  { figVertices :: [Pair Integer]
+  { figVertices :: [Pair Int]
   , figEdges :: [Pair Idx]
   }
   deriving (Eq, Ord, Show)
 
 data Problem = Problem
-  { prHole :: [Pair Integer]
+  { prHole :: [Pair Int]
   , prFigure :: Figure
-  , prEpsilon :: Integer
+  , prEpsilon :: Int
   }
   deriving (Eq, Ord, Show)
 
 data Solution = Solution
-  { solVertices :: [Pair Integer]
+  { solVertices :: [Pair Int]
   }
   deriving (Eq, Ord, Show)
 

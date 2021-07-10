@@ -10,20 +10,20 @@ import ICFPC.Geometry
 import ICFPC.JSON
 import qualified ICFPC.IntPairMap as IPM
 
-type Edges = IPM.IntPairMap Integer
+type Edges = IPM.IntPairMap Int
 
 sp !x !y = (x, y)
 
-type Vertices = IM.IntMap (Integer, Integer)
+type Vertices = IM.IntMap (Int, Int)
 
 data PointNative = Point {-# UNPACK #-} !Int !Int
 
 {-# INLINE toPointNative #-}
 toPointNative :: Point -> PointNative
-toPointNative = \(x, y) -> Point (fromInteger x) (fromInteger y)
+toPointNative = \(x, y) -> Point x y
 
 fromPointNative :: PointNative -> Point
-fromPointNative (Point x y) = (toInteger x, toInteger y)
+fromPointNative (Point x y) = (x, y)
 
 data SegmentNative = Segment {-# UNPACK #-} !PointNative !PointNative
 
@@ -73,10 +73,10 @@ distanceEnergy !p (Segment a b) =
 -- multiply the inequality |d(x)/d - 1| < ... through by sqrt(d)/2 so that it's roughly linear in x and y
 lengthEnergy :: Epsilon -> Segment -> Dist -> Double
 lengthEnergy eps seg d =
-  max 0.0 $ abs (fromInteger d' / (sqrtD * 2) - sqrtD / 2) - fromInteger eps * sqrtD / 2e6
+  max 0.0 $ abs (fromIntegral d' / (sqrtD * 2) - sqrtD / 2) - fromIntegral eps * sqrtD / 2e6
   where
     !d' = distSeg seg
-    !sqrtD = sqrt $ fromInteger d
+    !sqrtD = sqrt $ fromIntegral d
 
 energy :: Epsilon -> Polygon -> Edges -> Vertices -> Double
 energy eps boundary es vs = boundaryEnergies + lengthEnergies / 10 + scoreEnergies / 100
@@ -84,14 +84,14 @@ energy eps boundary es vs = boundaryEnergies + lengthEnergies / 10 + scoreEnergi
     boundaryEnergies = sum [overlapEnergy bound (Segment (vs' IM.! u) (vs' IM.! v)) | bound <- boundary', (u, v, _) <- IPM.toList es]
       + sum [if pointInPolygon boundary (fromPointNative p) then 0.0 else minimum [distanceEnergy p bound | bound <- boundary'] | p <- IM.elems vs']
     lengthEnergies = sum [lengthEnergy eps (vs IM.! u, vs IM.! v) d | (u, v, d) <- IPM.toList es]
-    scoreEnergies = sqrt $ fromInteger $ sum [minimum [distSeg (b, v) | v <- IM.elems vs] | b <- boundary]
+    scoreEnergies = sqrt $ fromIntegral $ sum [minimum [distSeg (b, v) | v <- IM.elems vs] | b <- boundary]
     !boundary' = map toSegmentNative $ cyclePairs boundary
     !vs' = IM.map toPointNative vs
 
-mkVertices :: [Pair Integer] -> Vertices
+mkVertices :: [Pair Int] -> Vertices
 mkVertices xs = IM.fromList $ zip [0..] [(x, y) | Pair !x !y <- xs]
 
-outputVertices :: Vertices -> [Pair Integer]
+outputVertices :: Vertices -> [Pair Int]
 outputVertices xs = (\(x, y) -> Pair x y) <$> IM.elems xs
 
 mkEdges :: Vertices -> [Pair Int] -> Edges
@@ -109,14 +109,25 @@ isValid eps boundary es vs = if boundaryValid && edgesValid then Ok else NotOk
     boundaryValid = all (\(u, v, _) -> segmentInPolygon boundary (vs IM.! u, vs IM.! v)) $ IPM.toList es
     edgesValid = all (\(u, v, d) -> canStretch eps d (vs IM.! u, vs IM.! v) == EQ) $ IPM.toList es
 
-randomMutation :: IOGenM StdGen -> Vertices -> IO Vertices
-randomMutation gen vs = do
+vertexNeighbors :: Int -> Edges -> Vertices -> [(Point, Dist)]
+vertexNeighbors v es vs = map (\(v', d) -> (vs IM.! v', d)) $ IPM.neighbors es v
+
+randomMutation :: IOGenM StdGen -> Epsilon -> Polygon -> Edges -> Vertices -> IO Vertices
+randomMutation gen eps poly es vs = do
   let (!maxI, _) = IM.findMax vs
   v <- uniformRM (0, maxI) gen
+  let vnbs = vertexNeighbors v es vs
+      vnbs' = if null vnbs then [] else tail vnbs -- relax restrictions a bit
+      nbrs = (vs IM.! v) : (allowedPositions poly eps vnbs')
+      lnbrs = length nbrs
+  i <- uniformRM (0, lnbrs-1) gen
+  pure $ IM.insert v (nbrs !! i) vs
+  {-
   dir <- uniformRM (0, 7) gen
   let dir' = if dir < 4 then dir else dir + 1
   let delta@(!_, !_) = (dir' `div` 3 - 1, dir' `mod` 3 - 1)
   pure $ IM.adjust (.+. delta) v vs
+  -}
 
 weightedChoice :: IOGenM StdGen -> (a -> Double) -> [a] -> IO a
 weightedChoice gen weight xs = do
@@ -131,6 +142,6 @@ weightedChoice gen weight xs = do
 
 pickNeighbor :: Epsilon -> Polygon -> Edges -> IOGenM StdGen -> Int -> Double -> Vertices -> IO Vertices
 pickNeighbor eps bound es gen k temp vs = do
-  vss <- (vs:) <$> replicateM k (randomMutation gen vs)
+  vss <- (vs:) <$> replicateM k (randomMutation gen eps bound es vs)
   -- boltzmann distribution
   weightedChoice gen ((\e -> exp (-e / temp)) . energy eps bound es) vss

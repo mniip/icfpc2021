@@ -5,7 +5,7 @@ import Data.List (sort, group, foldl')
 import GHC.Exts
 import Debug.Trace (traceShow)
 
-type Point = (Integer, Integer)
+type Point = (Int, Int)
 
 {-# INLINE (.+.) #-}
 (.+.) :: Point -> Point -> Point
@@ -22,11 +22,11 @@ type Point = (Integer, Integer)
     !ny = y - y'
 
 -- Signed area of a traingle (doubled)
-area :: Point -> Point -> Point -> Integer
+area :: Point -> Point -> Point -> Int
 area (x1, y1) (x2, y2) (x3, y3) = (x2 - x1)*(y3 - y1) - (y2 - y1)*(x3 - x1)
 
 -- Check that two 1-dim intervals intersect
-intersect1Dim :: Integer -> Integer -> Integer -> Integer -> Bool
+intersect1Dim :: Int -> Int -> Int -> Int -> Bool
 intersect1Dim a b c d = max l1 l2 <= min r1 r2
     where l1 = min a b
           r1 = max a b
@@ -44,7 +44,7 @@ intersectSegments (a, b) (c, d) =
     (area c d a) * (area c d b) <= 0 -- a and b are separated by dc
 
 -- Check that p lies in [a, b]
-pointOnInterval :: Integer -> Integer -> Integer -> Bool
+pointOnInterval :: Int -> Int -> Int -> Bool
 pointOnInterval p a b = (min a b) <= p && p <= (max a b)
 
 -- Check that point belongs to a 2D segment
@@ -92,7 +92,7 @@ segmentInPolygon ps s@(a, b) =
               doubleps = map (\(x, y) -> (2*x, 2*y)) ps
               midpoints = zipWith (.+.) pointsOnSegment (tail pointsOnSegment)
 
-type Dist = Integer
+type Dist = Int
 
 -- Distance squared
 dist :: Point -> Point -> Dist
@@ -101,10 +101,10 @@ dist (x, y) (x', y') = (x-x')^2 + (y-y')^2
 distSeg :: Segment -> Dist
 distSeg (a, b) = dist a b
 
-type Epsilon = Integer
+type Epsilon = Int
 
 -- Given epsilon and original length, return a range of allowed lengths
-stretchInterval :: Integer -> Integer -> (Integer, Integer)
+stretchInterval :: Int -> Int -> (Int, Int)
 stretchInterval eps d = (max 0 lower, upper)
     where fdiv a b = negate ((negate a) `div` b)
           lower = (d*(1000000 - eps)) `fdiv` 1000000
@@ -120,7 +120,7 @@ canStretch eps d s
 
 type Figure = [Point]
 
-dislikes :: Polygon -> Figure -> Integer
+dislikes :: Polygon -> Figure -> Int
 dislikes hole pose = sum [ minimum [dist h v | v <- pose] | h <- hole]
 
 isValid :: Epsilon -> Polygon -> [(Int, Int)] -> Figure -> Figure -> Bool

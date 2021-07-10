@@ -29,7 +29,7 @@ data World = World
   , wSelection :: S.Set Int
   , wSelectionRect :: Maybe (Point, Point)
   , wDragging :: Maybe Point
-  , wEpsilon :: Integer
+  , wEpsilon :: Int
   , wSaveFile :: FilePath
   }
 
@@ -173,9 +173,9 @@ valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
 valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es, 
                       all (\(u, v, d) -> canStretch eps d (vs !! u, vs !! v) == EQ) es)
 
-scorePicture :: (Point, Point) -> (Bool, Bool) -> Integer -> Picture
+scorePicture :: (Point, Point) -> (Bool, Bool) -> Int -> Picture
 scorePicture ((minX, _), (_, maxY)) (inside, stretch) score = 
-    Translate (fromInteger minX) (fromInteger $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (isinside, isstretch, score)
+    Translate (fromIntegral minX) (fromIntegral $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (isinside, isstretch, score)
         where isinside = if inside then "OK" else "Not inside"
               isstretch = if stretch then "OK" else "Lengths"
 
@@ -232,7 +232,7 @@ cursorPicture coords = case fromIntegerPoint coords of
   (x, y) -> Color blue $ Translate x y $ ThickCircle 0.25 0.5
 
 fromIntegerPoint :: Num a => Point -> (a, a)
-fromIntegerPoint = fromInteger *** fromInteger
+fromIntegerPoint = fromIntegral *** fromIntegral
 
 fromIntegerPointList :: Num a => [Point] -> [(a, a)]
 fromIntegerPointList = map fromIntegerPoint
@@ -247,10 +247,10 @@ withNth n f = go n
     go !0 (x:xs) = f x:xs
     go !n (x:xs) = x:go (n-1) xs
 
-boundingGrid :: [(Integer, Integer)] -> ((Integer, Integer), (Integer, Integer))
+boundingGrid :: [(Int, Int)] -> ((Int, Int), (Int, Int))
 boundingGrid xs = (minimum *** minimum) &&& (maximum *** maximum) $ unzip xs
 
-boundingViewPort :: [(Integer, Integer)] -> ViewPort
+boundingViewPort :: [(Int, Int)] -> ViewPort
 boundingViewPort xs = case fromIntegerPoint *** fromIntegerPoint $ boundingGrid xs of
   ((minX, minY), (maxX, maxY)) -> ViewPort
     { viewPortTranslate = (- (minX + maxX) / 2, - (minY + maxY) / 2)
