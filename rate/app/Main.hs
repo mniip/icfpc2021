@@ -7,7 +7,7 @@ import qualified Data.IntMap as IM
 import qualified Data.ByteString.Lazy as BSL
 
 import ICFPC.JSON
-import ICFPC.Geometry
+import ICFPC.Geometry hiding (isValid)
 import ICFPC.Annealing
 
 main :: IO ()

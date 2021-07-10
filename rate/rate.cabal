@@ -4,8 +4,6 @@ version:            0.1.0.0
 author:             mniip
 maintainer:         mniip@mniip.com
 
-extra-source-files: CHANGELOG.md
-
 executable rate
     main-is:          Main.hs
     build-depends:    base >= 4.14, io, geometry, containers, bytestring

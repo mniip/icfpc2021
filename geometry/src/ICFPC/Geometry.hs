@@ -123,6 +123,11 @@ type Figure = [Point]
 dislikes :: Polygon -> Figure -> Integer
 dislikes hole pose = sum [ minimum [dist h v | v <- pose] | h <- hole]
 
+isValid :: Epsilon -> Polygon -> [(Int, Int)] -> Figure -> Figure -> Bool
+isValid eps hole edges origPose pose =
+  all (segmentInPolygon hole) [(pose !! u, pose !! v) | (u, v) <- edges] &&
+  and [canStretch eps (distSeg (origPose !! u, origPose !! v)) (pose !! u, pose !! v) == EQ | (u, v) <- edges]
+
 -- Integer square root
 isqrt :: Integral a => a -> a
 isqrt n = go (next n) n

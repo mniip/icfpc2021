@@ -39,7 +39,7 @@ main = do
         then do
           putStrLn $ solFile <> " ran out of juice: " <> show sc
           pure 300
-        else pure $ temp * 0.9999
+        else pure $ temp * 0.9995
       go (min sc best) temp' vs'
   let !e = energy eps boundary edges vertices
   go (isValid eps boundary edges vertices, e, dislikes boundary (IM.elems vertices)) e vertices
