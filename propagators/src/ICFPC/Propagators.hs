@@ -11,6 +11,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
 import qualified Data.Array as A
+import Control.Concurrent.Async
 
 import ICFPC.Geometry
 
@@ -100,11 +101,11 @@ cloneCircuit circ = do
     , cPendingUpdates = updates
     }
 
-experiment :: (MonadIO m, Traversable t) => CircuitState a -> t b -> (CircuitState a -> b -> m c) -> m (t c)
-experiment circ xs f = forM xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
+experiment :: Traversable t => CircuitState a -> t b -> (CircuitState a -> b -> IO c) -> IO (t c)
+experiment circ xs f = forConcurrently xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 
-experiment_ :: (MonadIO m, Foldable t) => CircuitState a -> t b -> (CircuitState a -> b -> m c) -> m ()
-experiment_ circ xs f = forM_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
+experiment_ :: Foldable t => CircuitState a -> t b -> (CircuitState a -> b -> IO c) -> IO ()
+experiment_ circ xs f = forConcurrently_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 
 data ZSet a = Full | Finite (S.Set a)
   deriving (Eq, Ord, Show)
