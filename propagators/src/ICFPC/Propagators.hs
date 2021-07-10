@@ -145,9 +145,9 @@ vertexCircuit eps bound es numVs = do
   let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && validSegments A.! p A.! fst q A.! snd q
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
-          [ (j, admDelta)
+          [ (j, admDelta) -- asc list (!)
           | (j, dist) <- mapMaybe (neighborOf i) es
-          , let !admDelta = S.fromList $ stretchAnnulus eps dist
+          , let !admDelta = S.toAscList . S.fromList $ stretchAnnulus eps dist
           ]
     addNode circ Full $ \trigger old intersected new -> if old `isZSubset` intersected
       then pure ()
@@ -155,8 +155,8 @@ vertexCircuit eps bound es numVs = do
         Full -> pure () -- unreachable
         Finite new' -> do
           forM_ neighbors $ \(j, admDelta) -> do
-            let !admissible = S.unions
-                  [S.filter (isValidSegment pos) $ S.mapMonotonic (.+. pos) admDelta | pos <- S.toList new']
+            let !admissible = S.fromList
+                  [other | pos <- S.toList new', delta <- admDelta, let !other = pos .+. delta, isValidSegment pos other]
             trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
   pure circ
