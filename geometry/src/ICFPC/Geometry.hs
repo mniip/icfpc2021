@@ -1,14 +1,25 @@
+{-# LANGUAGE BangPatterns #-}
 module ICFPC.Geometry where
 
+import Data.List (foldl')
+import GHC.Exts
 import Debug.Trace (traceShow)
 
 type Point = (Integer, Integer)
 
+{-# INLINE (.+.) #-}
 (.+.) :: Point -> Point -> Point
-(x, y) .+. (x', y') = (x+x', y+y')
+(x, y) .+. (x', y') = (nx, ny)
+  where
+    !nx = x + x'
+    !ny = y + y'
 
+{-# INLINE (.-.) #-}
 (.-.) :: Point -> Point -> Point
-(x, y) .-. (x', y') = (x-x', y-y')
+(x, y) .-. (x', y') = (nx, ny)
+  where
+    !nx = x - x'
+    !ny = y - y'
 
 -- Signed area of a traingle (doubled)
 area :: Point -> Point -> Point -> Integer
@@ -53,15 +64,15 @@ properIntersectSegments ab@(a, b) cd@(c, d) =
 type Polygon = [Point]
 
 -- [1, 2, 3] -> [(1,2), (2,3), (3,1)]
+{-# INLINE cyclePairs #-}
 cyclePairs :: [a] -> [(a, a)]
-cyclePairs ls = zip ls (tail ls ++ take 1 ls)
+cyclePairs xs = foldr (\x f y z -> (y, x) : f x z) (\y z -> [(y, z)]) (tail xs) (head xs) (head xs)
 
 -- Check that a point is inside a polygon
 pointInPolygon :: Polygon -> Point -> Bool
-pointInPolygon ps q@(qx, qy) = any (pointOnSegment q) edges || -- If q is on boundary, it's "inside"
-                               not (foldl edge True edges)
-    where edges = cyclePairs ps
-          edge f (a, b)
+pointInPolygon ps q@(qx, qy) = any (pointOnSegment q) (cyclePairs ps) || -- If q is on boundary, it's "inside"
+                               not (foldl' edge True (cyclePairs ps))
+    where edge f (a, b)
               | snd maxp <= snd q || snd minp > snd q = f
               | area minp maxp q > 0 = not f
               | otherwise = f -- Should not happen

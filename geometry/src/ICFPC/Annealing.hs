@@ -16,37 +16,59 @@ sp !x !y = (x, y)
 
 type Vertices = IM.IntMap (Integer, Integer)
 
-dot (x, y) (z, w) = x * z + y * w
+data PointNative = Point {-# UNPACK #-} !Int !Int
+
+{-# INLINE toPointNative #-}
+toPointNative :: Point -> PointNative
+toPointNative = \(x, y) -> Point (fromInteger x) (fromInteger y)
+
+fromPointNative :: PointNative -> Point
+fromPointNative (Point x y) = (toInteger x, toInteger y)
+
+data SegmentNative = Segment {-# UNPACK #-} !PointNative !PointNative
+
+{-# INLINE toSegmentNative #-}
+toSegmentNative :: Segment -> SegmentNative
+toSegmentNative = \(a, b) -> Segment (toPointNative a) (toPointNative b)
+
+dot :: PointNative -> PointNative -> Int
+dot (Point x y) (Point z w) = x * z + y * w
+
+(.--.) :: PointNative -> PointNative -> PointNative
+Point x1 y1 .--. Point x2 y2 = Point (x1 - x2) (y1 - y2)
+
+sideways :: PointNative -> PointNative
+sideways (Point x y) = Point (-y) x
 
 -- minimal translation required to untangle the segments
-overlapEnergy :: Segment -> Segment -> Double
-overlapEnergy (a@(!_, !_), b@(!_, !_)) (p@(!_, !_), q@(!_, !_)) =
+overlapEnergy :: SegmentNative -> SegmentNative -> Double
+overlapEnergy (Segment a b) (Segment p q) =
   if pab * qab < 0 && apq * bpq < 0
-  then fromInteger (min (abs pab) (abs qab)) / lab
+  then fromIntegral (min (abs pab) (abs qab)) / lab
   else 0.0
   where
-    oab = case a .-. b of (x, y) -> (-y, x)
-    opq = case p .-. q of (x, y) -> (-y, x)
-    !pab = oab `dot` (p .-. a)
-    !qab = oab `dot` (q .-. a)
-    !apq = opq `dot` (a .-. p)
-    !bpq = opq `dot` (b .-. p)
-    lab = sqrt $ fromInteger $ oab `dot` oab
+    oab = sideways $ a .--. b
+    opq = sideways $ p .--. q
+    !pab = oab `dot` (p .--. a)
+    !qab = oab `dot` (q .--. a)
+    !apq = opq `dot` (a .--. p)
+    !bpq = opq `dot` (b .--. p)
+    lab = sqrt $ fromIntegral $ oab `dot` oab
 
-distanceEnergy :: Point -> Segment -> Double
-distanceEnergy p@(!_, !_) (a@(!_, !_), b@(!_, !_)) =
+distanceEnergy :: PointNative -> SegmentNative -> Double
+distanceEnergy !p (Segment a b) =
   if t >= 0 && t <= 1
-  then fromInteger (abs $ oab `dot` ap) / lab
+  then fromIntegral (abs $ oab `dot` ap) / lab
   else min lap lbp
   where
-    !ab = a .-. b
-    !ap = a .-. p
-    !t = fromInteger (ab `dot` ap) / lab
-    oab = case ab of (x, y) -> (-y, x)
-    lab = sqrt $ fromInteger $ ab `dot` ab
-    lap = sqrt $ fromInteger $ ap `dot` ap
-    bp = b .-. p
-    lbp = sqrt $ fromInteger $ bp `dot` bp
+    !ab = a .--. b
+    !ap = a .--. p
+    !t = fromIntegral (ab `dot` ap) / lab
+    oab = sideways ab
+    lab = sqrt $ fromIntegral $ ab `dot` ab
+    lap = sqrt $ fromIntegral $ ap `dot` ap
+    bp = b .--. p
+    lbp = sqrt $ fromIntegral $ bp `dot` bp
 
 -- multiply the inequality |d(x)/d - 1| < ... through by sqrt(d)/2 so that it's roughly linear in x and y
 lengthEnergy :: Epsilon -> Segment -> Dist -> Double
@@ -59,10 +81,12 @@ lengthEnergy eps seg d =
 energy :: Epsilon -> Polygon -> Edges -> Vertices -> Double
 energy eps boundary es vs = boundaryEnergies + lengthEnergies / 10 + scoreEnergies / 100
   where
-    boundaryEnergies = sum [overlapEnergy bound (vs IM.! u, vs IM.! v) | bound <- cyclePairs boundary, (u, v, _) <- IPM.toList es]
-      + sum [if pointInPolygon boundary p then 0.0 else minimum [distanceEnergy p bound | bound <- cyclePairs boundary] | p <- IM.elems vs]
+    boundaryEnergies = sum [overlapEnergy bound (Segment (vs' IM.! u) (vs' IM.! v)) | bound <- boundary', (u, v, _) <- IPM.toList es]
+      + sum [if pointInPolygon boundary (fromPointNative p) then 0.0 else minimum [distanceEnergy p bound | bound <- boundary'] | p <- IM.elems vs']
     lengthEnergies = sum [lengthEnergy eps (vs IM.! u, vs IM.! v) d | (u, v, d) <- IPM.toList es]
     scoreEnergies = sqrt $ fromInteger $ sum [minimum [distSeg (b, v) | v <- IM.elems vs] | b <- boundary]
+    !boundary' = map toSegmentNative $ cyclePairs boundary
+    !vs' = IM.map toPointNative vs
 
 mkVertices :: [Pair Integer] -> Vertices
 mkVertices xs = IM.fromList $ zip [0..] [(x, y) | Pair !x !y <- xs]
