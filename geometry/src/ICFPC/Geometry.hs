@@ -71,9 +71,9 @@ cyclePairs xs = foldr (\x f y z -> (y, x) : f x z) (\y z -> [(y, z)]) (tail xs) 
 -- Check that a point is inside a polygon
 pointInPolygon :: Polygon -> Point -> Bool
 pointInPolygon ps q@(qx, qy) = any (pointOnSegment q) (cyclePairs ps) || -- If q is on boundary, it's "inside"
-                               not (foldl' edge True (cyclePairs ps))
+                               foldl' edge False (cyclePairs ps)
     where edge f (a, b)
-              | snd maxp <= snd q || snd minp > snd q = f
+              | snd maxp <= qy || snd minp > qy = f
               | area minp maxp q > 0 = not f
               | otherwise = f -- Should not happen
                   where (minp, maxp) = if snd a > snd b then (b, a) else (a, b)
@@ -83,7 +83,7 @@ segmentInPolygon :: Polygon -> Segment -> Bool
 segmentInPolygon ps s@(a, b) =
     pointInPolygon ps a &&
     pointInPolygon ps b && -- Both ends are inside
-    not (any (properIntersectSegments s) (cyclePairs ps)) && -- s does not intersect edges (but may touch)
+    all (not . properIntersectSegments s) (cyclePairs ps) && -- s does not intersect edges (but may touch)
     all (pointInPolygon doubleps) midpoints
         where edges = cyclePairs ps
               pointsOnSegment = map head . group . -- Remove doubles
