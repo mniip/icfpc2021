@@ -28,6 +28,7 @@ main = do
 
   circ <- vertexCircuit eps boundary edges numVs
   runCircuit circ
+  putStrLn $ solFile <> ": Init"
   let
     report vs =  do
       if isValid eps boundary (map (\(u, v, _) -> (u, v)) edges) vertices vs
@@ -38,8 +39,8 @@ main = do
           putStrLn $ solFile <> ": New best: " <> show score
           BSL.writeFile solFile $ encodeSolution $ Solution [Pair x y | (x, y) <- vs]
       else putStrLn $ solFile <> ": Invalid (!?) " <> show vs
-  forConcurrently_ [0..numVs-1] $ \i ->
-    forConcurrently_ boundary $ \p -> do
+  forConcurrently_ boundary $ \p ->
+    forM_ [0..numVs-1] $ \i -> do
       circ' <- cloneCircuit circ
       triggerNode circ' i (Finite $ S.singleton p)
       iterateCircuit circ' report
