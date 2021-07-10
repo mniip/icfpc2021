@@ -8,6 +8,8 @@ library
     exposed-modules:    ICFPC.Geometry
                       , ICFPC.IntPairMap
                       , ICFPC.Annealing
+                      , ICFPC.Vector
+                      , ICFPC.Polygon
     build-depends:    base >=4.14, containers, io, random
     hs-source-dirs:   src
     default-language: Haskell2010
