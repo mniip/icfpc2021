@@ -91,7 +91,7 @@ newVerticiesOnDrag (all, new) result_acc delta world = if S.size new == 0 then r
     (inside_ok, dist_ok) = validShort world moved
 
 onEvent :: Event -> World -> IO World
-onEvent (EventKey (MouseButton MiddleButton) Up _ _) world = do
+onEvent (EventKey (Char 'd') Up _ _) world = do
   pure world
     { wSimpleDrag = not (wSimpleDrag world)
     }
