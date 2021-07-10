@@ -18,9 +18,9 @@ main :: IO ()
 main = do
   [probFile, solFile] <- getArgs
   problem <- decodeProblem <$> BSL.readFile probFile
-  let boundary = (\(Pair x y) -> (x, y)) <$> prHole problem
-  let !vertices = (\(Pair x y) -> (x, y)) <$> figVertices (prFigure problem)
-  let !edges = [(u, v, distSeg (vertices !! u, vertices !! v)) | Pair u v <- figEdges $ prFigure problem]
+  let boundary = prHole problem
+  let !vertices = figVertices (prFigure problem)
+  let !edges = [(u, v, distSeg (vertices !! u, vertices !! v)) | (u, v) <- figEdges $ prFigure problem]
   let !eps = prEpsilon problem
   let !numVs = length vertices
 
@@ -37,7 +37,7 @@ main = do
         isBest <- atomicModifyIORef' bestRef $ \mBest -> if maybe True (> score) mBest then (Just score, True) else (mBest, False)
         when isBest $ do
           putStrLn $ solFile <> ": New best: " <> show score
-          BSL.writeFile solFile $ encodeSolution $ Solution [Pair x y | (x, y) <- vs]
+          BSL.writeFile solFile $ encodePose $ Pose vs []
       else putStrLn $ solFile <> ": Invalid (!?) " <> show vs
   forConcurrently_ boundary $ \p ->
     forM_ [0..numVs-1] $ \i -> do

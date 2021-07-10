@@ -89,13 +89,13 @@ energy eps boundary es vs = boundaryEnergies + lengthEnergies / 10 + scoreEnergi
     !vs' = IM.map toPointNative vs
 
 mkVertices :: [Pair Int] -> Vertices
-mkVertices xs = IM.fromList $ zip [0..] [(x, y) | Pair !x !y <- xs]
+mkVertices xs = IM.fromList $ zip [0..] [(x, y) | (!x, !y) <- xs]
 
 outputVertices :: Vertices -> [Pair Int]
-outputVertices xs = (\(x, y) -> Pair x y) <$> IM.elems xs
+outputVertices xs = IM.elems xs
 
 mkEdges :: Vertices -> [Pair Int] -> Edges
-mkEdges vs is = IPM.fromList [(u, v, d) | Pair !u !v <- is, let !d = dist (vs IM.! u) (vs IM.! v)]
+mkEdges vs is = IPM.fromList [(u, v, d) | (!u, !v) <- is, let !d = dist (vs IM.! u) (vs IM.! v)]
 
 mkEdgesWeighted :: [(Int, Int, Dist)] -> Edges
 mkEdgesWeighted = IPM.fromList
