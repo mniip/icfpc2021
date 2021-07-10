@@ -13,7 +13,7 @@ library
 
 executable propagate
     main-is:            Main.hs
-    build-depends:    base >=4.14, io, geometry, containers, bytestring, propagators
+    build-depends:    base >=4.14, io, geometry, containers, bytestring, propagators, async
     hs-source-dirs:   app
     default-language: Haskell2010
     ghc-options:      -O2 -threaded
