@@ -1,51 +1,76 @@
-{-# LANGUAGE DerivingStrategies, TemplateHaskell #-}
+{-# LANGUAGE DerivingStrategies, TemplateHaskell, RecordWildCards, OverloadedStrings #-}
 module ICFPC.JSON where
 
 import Data.Aeson
 import Data.Aeson.Types hiding (Pair)
-import Data.Aeson.TH
 import qualified Data.ByteString.Lazy as BSL
 import Data.Maybe
 import Data.Vector hiding (length)
 
-import ICFPC.JSON.Options
+type Pair a = (a, a)
 
-data Pair a = Pair a a
-  deriving stock (Eq, Ord, Show)
+toJSONPair :: ToJSON a => Pair a -> Value
+toJSONPair (a, b) = listValue toJSON [a, b]
 
-instance ToJSON a => ToJSON (Pair a) where
-  toJSON (Pair a b) = listValue toJSON [a, b]
-
-instance FromJSON a => FromJSON (Pair a) where
-  parseJSON = withArray "expected array" $ \arr ->
+parseJSONPair :: FromJSON a => Value -> Parser (a, a)
+parseJSONPair = withArray "Pair" $ \arr ->
     if length arr == 2
-    then Pair <$> parseJSON (arr ! 0) <*> parseJSON (arr ! 1)
+    then (,) <$> parseJSON (arr ! 0) <*> parseJSON (arr ! 1)
     else fail "expected array of length 2"
 
 type Coord = Int
 type Idx = Int
 
 data Figure = Figure
-  { figVertices :: [Pair Int]
+  { figVertices :: [Pair Coord]
   , figEdges :: [Pair Idx]
   }
   deriving (Eq, Ord, Show)
 
+instance ToJSON Figure where
+  toJSON Figure{..} = object
+    [ "vertices" .= listValue toJSONPair figVertices
+    , "edges" .= listValue toJSONPair figEdges
+    ]
+
+instance FromJSON Figure where
+  parseJSON = withObject "Figure" $ \obj -> Figure
+    <$> explicitParseField (listParser parseJSONPair) obj "vertices"
+    <*> explicitParseField (listParser parseJSONPair) obj "edges"
+
 data Problem = Problem
-  { prHole :: [Pair Int]
+  { prHole :: [Pair Coord]
   , prFigure :: Figure
   , prEpsilon :: Int
   }
   deriving (Eq, Ord, Show)
 
+instance ToJSON Problem where
+  toJSON Problem{..} = object
+    [ "hole" .= listValue toJSONPair prHole
+    , "figure" .= prFigure
+    , "epsilon" .= prEpsilon
+    ]
+
+instance FromJSON Problem where
+  parseJSON = withObject "Problem" $ \obj -> Problem
+    <$> explicitParseField (listParser parseJSONPair) obj "hole"
+    <*> obj .: "figure"
+    <*> obj .: "epsilon"
+
 data Solution = Solution
-  { solVertices :: [Pair Int]
+  { solVertices :: [Pair Coord]
   }
   deriving (Eq, Ord, Show)
 
-deriveJSON jsonOptions ''Figure
-deriveJSON jsonOptions ''Problem
-deriveJSON jsonOptions ''Solution
+instance ToJSON Solution where
+  toJSON Solution{..} = object
+    [ "vertices" .= listValue toJSONPair solVertices
+    ]
+
+instance FromJSON Solution where
+  parseJSON = withObject "Solution" $ \obj -> Solution
+    <$> explicitParseField (listParser parseJSONPair) obj "vertices"
 
 decodeProblem :: BSL.ByteString -> Problem
 decodeProblem = either error id . eitherDecode

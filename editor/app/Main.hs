@@ -51,14 +51,14 @@ main = do
   vpRef <- newIORef $ error "no viewport"
   problem <- decodeProblem <$> BSL.readFile probFile
   eSolution <- try @SomeException $ evaluate =<< decodeSolution <$> BSL.readFile solFile
-  let hole = fromPair <$> prHole problem
+  let hole = prHole problem
   let initViewPort ctrl = do
         writeIORef vpRef (controllerModifyViewPort ctrl)
         controllerModifyViewPort ctrl $ \_ -> pure $ boundingViewPort hole
-  let origVertices = fromIntegerPointList $ fromPair <$> figVertices (prFigure problem)
+  let origVertices = fromIntegerPointList $ figVertices (prFigure problem)
   let vertices = case eSolution of
         Left _ -> origVertices
-        Right sol -> fromIntegerPointList $ fromPair <$> solVertices sol
+        Right sol -> fromIntegerPointList $ solVertices sol
   interactIO
     FullScreen
     black
@@ -68,7 +68,7 @@ main = do
           modVP vp
       , wHole = hole
       , wGrid = boundingGrid hole
-      , wEdges = (\(Pair u v) -> (u, v, dist (origVertices !! u) (origVertices !! v))) <$> figEdges (prFigure problem)
+      , wEdges = (\(u, v) -> (u, v, dist (origVertices !! u) (origVertices !! v))) <$> figEdges (prFigure problem)
       , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
@@ -141,7 +141,7 @@ onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = do
 onEvent (EventKey (SpecialKey KeyEsc) Down _ _) world = exitSuccess
 onEvent (EventKey (Char 's') Down _ _) world = do
   BSL.writeFile (wSaveFile world) $ encodeSolution Solution
-    { solVertices = (\(x, y) -> Pair x y) <$> wVertices world
+    { solVertices = wVertices world
     }
   pure world
 onEvent (EventKey (Char 'q') Down _ coord) world = do
@@ -275,9 +275,6 @@ fromIntegerPoint = fromIntegral *** fromIntegral
 
 fromIntegerPointList :: Num a => [Point] -> [(a, a)]
 fromIntegerPointList = map fromIntegerPoint
-
-fromPair :: Pair a -> (a, a)
-fromPair (Pair x y) = (x, y)
 
 withNth :: Int -> (a -> a) -> [a] -> [a]
 withNth n f = go n

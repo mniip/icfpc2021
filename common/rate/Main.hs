@@ -15,7 +15,7 @@ main = do
   [probFile, solFile] <- getArgs
   problem <- decodeProblem <$> BSL.readFile probFile
   sol <- decodeSolution <$> BSL.readFile solFile
-  let boundary = (\(Pair x y) -> sp x y) <$> prHole problem
+  let boundary = prHole problem
   let !edges = mkEdges (mkVertices $ figVertices $ prFigure problem) (figEdges $ prFigure problem)
   let !vertices = mkVertices $ solVertices sol
   let !eps = prEpsilon problem

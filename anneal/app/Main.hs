@@ -18,7 +18,7 @@ main = do
   [probFile, solFile] <- getArgs
   problem <- decodeProblem <$> BSL.readFile probFile
   eSolution <- try @SomeException $ evaluate =<< decodeSolution <$> BSL.readFile solFile
-  let boundary = (\(Pair x y) -> sp x y) <$> prHole problem
+  let boundary = prHole problem
   let !edges = mkEdges (mkVertices $ figVertices $ prFigure problem) (figEdges $ prFigure problem)
   let !vertices = mkVertices $ case eSolution of
         Left _ -> figVertices (prFigure problem)
