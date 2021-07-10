@@ -130,6 +130,7 @@ isValid eps hole edges origPose pose =
 
 -- Integer square root
 isqrt :: Integral a => a -> a
+isqrt 0 = 0
 isqrt n = go (next n) n
     where next xk = (xk + (n `div` xk)) `div` 2
           go xk xkm1 = let xkp1 = next xk

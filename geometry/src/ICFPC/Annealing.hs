@@ -118,7 +118,7 @@ randomMutation gen eps poly es vs = do
   v <- uniformRM (0, maxI) gen
   let vnbs = vertexNeighbors v es vs
       vnbs' = if null vnbs then [] else tail vnbs -- relax restrictions a bit
-      nbrs = (vs IM.! v) : (allowedPositions poly eps vnbs')
+      nbrs = (vs IM.! v) : (allowedPositions poly (max eps 1000000) vnbs)
       lnbrs = length nbrs
   i <- uniformRM (0, lnbrs-1) gen
   pure $ IM.insert v (nbrs !! i) vs

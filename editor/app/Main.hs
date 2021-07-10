@@ -146,6 +146,9 @@ onEvent (EventKey (Char 'f') Down _ coord) world = do
   let flipping (x, y) = (2 * mx - x, y)
   let newVertices = foldl' (\xs i -> withNth i flipping xs) (wVertices world) $ S.toList $ wSelection world
   pure world { wVertices = newVertices }
+onEvent (EventKey (Char '1') Down _ coord) world = do
+  let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world)
+  pure world { wVertices = newVertices }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -196,6 +199,23 @@ selectionPicture (Just ((x1, y1), (x2, y2))) = Line
   where
     (minX, minY) = fromIntegerPoint (min x1 x2, min y1 y2)
     (maxX, maxY) = fromIntegerPoint (max x1 x2, max y1 y2)
+
+vdiv (x,y) l = (x `div` l, y `div` l)
+vmul (x,y) l = (x*l, y*l)
+
+adjustPoint :: Epsilon -> Dist -> Point -> Point -> Point
+adjustPoint eps d p q =
+    let qp = q .-. p
+        len = isqrt $ dist q p
+    in case canStretch eps d (p, q) of
+           EQ -> p
+           LT -> p .-. (qp `vdiv` (1+len))
+           GT -> p .+. (qp `vdiv` (1+len))
+
+-- Stretch or contract edges
+adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
+adjustPoints eps is xs = zipWith go [0..] xs
+    where go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is)
 
 figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Picture
 figurePicture eps is xs selected = Pictures $
