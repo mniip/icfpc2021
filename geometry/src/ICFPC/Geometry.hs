@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 module ICFPC.Geometry where
 
-import Data.List (foldl')
+import Data.List (sort, group, foldl')
 import GHC.Exts
 import Debug.Trace (traceShow)
 
@@ -80,9 +80,17 @@ pointInPolygon ps q@(qx, qy) = any (pointOnSegment q) (cyclePairs ps) || -- If q
 
 -- Check that a segment is inside a polygon
 segmentInPolygon :: Polygon -> Segment -> Bool
-segmentInPolygon ps s@(a, b) = pointInPolygon ps a &&
-                               pointInPolygon ps b && -- Both ends are inside
-                               not (any (properIntersectSegments s) (cyclePairs ps)) -- ps does not intersect edges (but may touch)
+segmentInPolygon ps s@(a, b) =
+    pointInPolygon ps a &&
+    pointInPolygon ps b && -- Both ends are inside
+    not (any (properIntersectSegments s) (cyclePairs ps)) && -- s does not intersect edges (but may touch)
+    all (pointInPolygon doubleps) midpoints
+        where edges = cyclePairs ps
+              pointsOnSegment = map head . group . -- Remove doubles
+                                sort $ -- Sort poits "in one direction"
+                                ((filter (\p -> pointOnSegment p s) ps) ++ [a, b])
+              doubleps = map (\(x, y) -> (2*x, 2*y)) ps
+              midpoints = zipWith (.+.) pointsOnSegment (tail pointsOnSegment)
 
 type Dist = Integer
 
