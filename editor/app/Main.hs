@@ -53,6 +53,7 @@ data World = World
   , wEdgesToHoleEdges :: [[Point]] -- has size of wEdges
   , wShowCloseEdges :: Bool
   , wHideCloseEdgesNotUnderMouse :: Bool
+  , w_a_Pressed :: Bool
   }
 
 data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
@@ -121,6 +122,7 @@ main = do
       , wEdgesToHoleEdges = calculateCloseEdges (prEpsilon problem) edges (cyclePairs hole)
       , wShowCloseEdges = False
       , wHideCloseEdgesNotUnderMouse = False
+      , w_a_Pressed = False
       }
     worldPicture
     onEvent
@@ -170,7 +172,7 @@ onEvent (EventKey (MouseButton LeftButton) Up _ _) world = do
       pure world
         { wDragging = Nothing
         , wSelectionRect = Nothing
-        , wSelection = selection
+        , wSelection = if w_a_Pressed world then selection `S.union` (wSelection world) else selection
         }
 onEvent (EventKey (MouseButton WheelUp) Down _ coords) world = do
   wModifyViewPort world $ \vp -> do
@@ -235,6 +237,8 @@ onEvent (EventKey (Char 'v') Up _ _) world = pure world { wView           = not 
 onEvent (EventKey (Char 'r') Up _ _) world = pure world { wSpring         = not (wSpring world) }
 onEvent (EventKey (Char 'c') Up _ _) world = pure world { wShowCloseEdges = not (wShowCloseEdges world) }
 onEvent (EventKey (Char 'x') Up _ _) world = pure world { wHideCloseEdgesNotUnderMouse = not (wHideCloseEdgesNotUnderMouse world) }
+onEvent (EventKey (Char 'a') Up _ _) world = pure world { w_a_Pressed = False }
+onEvent (EventKey (Char 'a') Down _ _) world = pure world { w_a_Pressed = True }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
