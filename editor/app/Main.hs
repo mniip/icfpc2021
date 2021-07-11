@@ -207,6 +207,9 @@ onEvent (EventKey (Char '1') Down _ coord) world = do
 onEvent (EventKey (Char '2') Down _ coord) world = do
   let newVertices = improvePoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
   pure world { wVertices = newVertices }
+onEvent (EventKey (Char '3') Down _ coord) world = do
+  let newVertices = putPointsAway (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
+  pure world { wVertices = newVertices }
 onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple         = not (wHideSimple world) }
 onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes  = not (wVisualizeDislikes world) }
 onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode           = nextDrag (wDragMode world) }
@@ -253,10 +256,6 @@ worldPicture world = pure $ Pictures $
 validShort :: World -> [Point] -> (Bool, Bool)
 validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
 
-valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
-valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
-                      all (\(u, v, d) -> canStretch eps d (vs !! u, vs !! v) == EQ) es)
-
 scorePicture :: (Point, Point) -> (Bool, Bool) -> Int -> Picture
 scorePicture ((minX, _), (_, maxY)) (inside, stretch) score =
     Translate (fromIntegral minX) (fromIntegral $ maxY + 1) $ Scale 0.02 0.02 $ Text $ show (isinside, isstretch, score)
@@ -292,40 +291,6 @@ triangulationPicture triangles = Pictures $ map (Color triangulationColor) $ con
   where
     fromIntegerTriangles (V.V2 p1x p1y, V.V2 p2x p2y, V.V2 p3x p3y) =
       ((fromIntegral p1x, fromIntegral p1y), (fromIntegral p2x, fromIntegral p2y), (fromIntegral p3x, fromIntegral p3y))
-
-vdiv (x,y) l = (x `div` l, y `div` l)
-vmul (x,y) l = (x*l, y*l)
-
-adjustPoint :: Epsilon -> Dist -> Point -> Point -> Point
-adjustPoint eps d p q =
-    let qp = q .-. p
-        len = isqrt $ dist q p
-    in case canStretch eps d (p, q) of
-           EQ -> p
-           LT -> p .-. (qp `vdiv` (1+len))
-           GT -> p .+. (qp `vdiv` (1+len))
-
--- Stretch or contract edges
-adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
-adjustPoints eps is xs = zipWith go [0..] xs
-    where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
-          go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
-
--- Move point to the best "green" location.
--- Returns new figure
-improvePoint :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe [Point]
-improvePoint eps is xs bs i = if null variants then Nothing else Just . snd $ minimumBy (compare `on` fst) variants
-    where coords = allowedPositions bs eps jss
-          jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] ++ [(xs !! j, d) | (j, i', d) <- is, i' == i]
-          replace p = let (before, after) = splitAt i xs in before ++ p:tail after
-          variants = filter (\(_, ys) -> fst (valid eps bs is ys)) $ map (\p -> (dislikes bs (replace p), replace p)) coords
-
--- Improve all points in order
-improvePoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
-improvePoints eps is xs bs = foldl go xs $ zip [0..] xs
-    where go ys (i,p) = case improvePoint eps is ys bs i of
-                             Nothing -> ys
-                             Just ys' -> ys'
 
 figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Bool -> Picture
 figurePicture eps is xs selected hideSimple = Pictures $

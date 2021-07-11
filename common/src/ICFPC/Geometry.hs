@@ -1,9 +1,10 @@
 {-# LANGUAGE BangPatterns #-}
 module ICFPC.Geometry where
 
-import Data.List (sort, group, foldl')
+import Data.List (minimumBy, maximumBy, sort, group, foldl')
 import GHC.Exts
 import Debug.Trace (traceShow)
+import Data.Function (on)
 
 type Point = (Int, Int)
 
@@ -182,3 +183,65 @@ allowedPositions poly eps edges = insidePolyAndAnnula
           goodEdge (q, d) p = canStretch eps d (q, p) == EQ
           insideAnnula = foldl (\a e -> filter (goodEdge e) a) points edges
           insidePolyAndAnnula = filter (pointInPolygon poly) insideAnnula
+
+-- A version of isValid
+valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
+valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
+                      all (\(u, v, d) -> canStretch eps d (vs !! u, vs !! v) == EQ) es)
+
+-- Move point to the best "green" location.
+-- Returns new figure
+improvePoint :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe [Point]
+improvePoint eps is xs bs i = if null variants then Nothing else Just . snd $ minimumBy (compare `on` fst) variants
+    where coords = allowedPositions bs eps jss
+          jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] ++ [(xs !! j, d) | (j, i', d) <- is, i' == i]
+          replace p = let (before, after) = splitAt i xs in before ++ p:tail after
+          variants = filter (\(_, ys) -> fst (valid eps bs is ys)) $ map (\p -> (dislikes bs (replace p), replace p)) coords
+
+-- Improve all points in order
+improvePoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+improvePoints eps is xs bs = foldl go xs $ zip [0..] xs
+    where go ys (i,p) = case improvePoint eps is ys bs i of
+                             Nothing -> ys
+                             Just ys' -> ys'
+
+-- Try improving points until it stops working
+totallyImprove :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+totallyImprove eps is xs bs = go (dislikes bs xs) xs
+    where go d ys = let ys' = improvePoints eps is ys bs
+                        d' = dislikes bs ys'
+                    in if d' < d then go d' ys' else ys
+
+-- Move a point away from the center of mass
+putPointAway :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe [Point]
+putPointAway eps is xs bs i = if null coords then Nothing else Just . replace $ maximumBy (compare `on` (dist mass)) coords
+    where len = length xs
+          mass = (sum (map fst xs) `div` len, sum (map snd xs) `div` len)
+          coords = allowedPositions bs (2*eps) jss
+          jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] ++ [(xs !! j, d) | (j, i', d) <- is, i' == i]
+          replace p = let (before, after) = splitAt i xs in before ++ p:tail after
+
+putPointsAway :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+putPointsAway eps is xs bs = foldl go xs $ zip [0..] xs
+    where go ys (i,p) = case putPointAway eps is ys bs i of
+                             Nothing -> ys
+                             Just ys' -> ys'
+
+vdiv (x,y) l = ((x+1) `quot` l, (y+1) `quot` l)
+vmul (x,y) l = (x*l, y*l)
+
+adjustPoint :: Epsilon -> Dist -> Point -> Point -> Point
+adjustPoint eps d p q =
+    let qp = q .-. p
+        len = (2*(isqrt $ dist q p)) `div` 3
+    in case canStretch eps d (p, q) of
+           EQ -> p
+           LT -> p .-. (qp `vdiv` (1+len))
+           GT -> p .+. (qp `vdiv` (1+len))
+
+-- Stretch or contract edges
+adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
+adjustPoints eps is xs = zipWith go [0..] xs
+    where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
+          go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
+

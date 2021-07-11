@@ -129,6 +129,13 @@ randomMutation gen eps poly es vs = do
   pure $ IM.adjust (.+. delta) v vs
   -}
 
+randomInit :: IOGenM StdGen -> Polygon -> Int -> IO [Pair Int]
+randomInit gen poly numv = replicateM numv randomVertex
+    where polyl = length poly
+          randomVertex = do
+              i <- uniformRM (0, polyl-1) gen
+              return $ poly !! i
+
 weightedChoice :: IOGenM StdGen -> (a -> Double) -> [a] -> IO a
 weightedChoice gen weight xs = do
   let !totalWeight = sum weights
@@ -142,6 +149,10 @@ weightedChoice gen weight xs = do
 
 pickNeighbor :: Epsilon -> Polygon -> Edges -> IOGenM StdGen -> Int -> Double -> Vertices -> IO Vertices
 pickNeighbor eps bound es gen k temp vs = do
-  vss <- (vs:) <$> replicateM k (randomMutation gen eps bound es vs)
+  let is = IPM.toList es
+      xs = map snd $ IM.toAscList vs
+      blowUp = mkVertices $ putPointsAway eps is xs bound
+      adjusted = mkVertices $ adjustPoints eps is xs
+  vss <- ([adjusted,blowUp,vs] ++) <$> replicateM k (randomMutation gen eps bound es vs)
   -- boltzmann distribution
   weightedChoice gen ((\e -> exp (-e / temp)) . energy eps bound es) vss
