@@ -251,6 +251,7 @@ worldPicture world = pure $ Pictures $
                                       Globalist -> yellow
                                       BreakALeg -> blue
                                       WallHack -> orange
+                                      SuperFlex -> cyan
                       in Color (withAlpha 0.5 color) $ Translate x y $ ThickCircle 1 2
 
 validShort :: World -> [Point] -> (Bool, Bool)
