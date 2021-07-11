@@ -5,15 +5,18 @@ import Data.Ord
 import Data.Maybe
 import Data.IORef
 import Data.Foldable
+import Data.List (sortBy)
 import qualified Data.IntMap.Strict as IM
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
 import qualified Data.Array as A
+import qualified Data.Array.IO as A
 import Control.Exception
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
+import System.Random
 
 import ICFPC.Geometry (stretchAnnulus)
 import ICFPC.Polygon
@@ -22,6 +25,7 @@ import ICFPC.Problem
 import qualified ICFPC.RLE as R
 import qualified ICFPC.RLE2D as R2
 import qualified ICFPC.IntPairMap as IPM
+import System.IO
 
 class Monoid a => Nodeable a where
   bottom :: a
@@ -89,7 +93,7 @@ runCircuit circ = do
             liftIO $ modifyIORef' statesRef $ IM.insertWith (<>) i x''
             let trigger j y
                   | i == j = error "cyclic trigger"
-                  | otherwise = modifyIORef pendingRef $ IM.insertWith (<>) j y
+                  | otherwise = modifyIORef' pendingRef $ IM.insertWith (<>) j y
             liftIO $ (updaters IM.! i) trigger  x x' x''
         case result of
           Nothing -> pure True
@@ -115,6 +119,9 @@ experiment circ xs f = forM xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 experiment_ :: Foldable t => CircuitState a -> t b -> (CircuitState a -> b -> IO c) -> IO ()
 experiment_ circ xs f = forM_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 
+experimentPar_ :: Foldable t => CircuitState a -> t b -> (CircuitState a -> b -> IO c) -> IO ()
+experimentPar_ circ xs f = forM_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
+
 data ZSet = Full | Finite R2.RLE2D
   deriving (Eq, Ord, Show)
 
@@ -135,21 +142,24 @@ isZSubset _ Full = True
 isZSubset Full _ = False
 isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 
+zSize Full = -1
+zSize (Finite s) = R2.size s
+
 admissibleRing :: Epsilon -> Dist -> R2.RLE2D
 admissibleRing eps d = R2.fromList $ map packV2 $ stretchAnnulus eps d
 
-vertexCircuit :: ProblemSpec -> IO (CircuitState ZSet)
+vertexCircuit :: ProblemSpec -> IO (V2 -> Bool, S2 -> Bool, CircuitState ZSet)
 vertexCircuit !spec = do
   circ <- newCircuitState
   let !insides = computePolygonInternals $ psHole spec
   let S2 minX minY maxX maxY = psBoundingBox spec
   let bounds = ((minX, minY), (maxX, maxY))
-  let !validSegments = A.listArray bounds
-        [ computePolygonVisibility (psHole spec) (V2 x y)
+  let !validDeltas = A.listArray bounds
+        [ R2.shift (V2 (-x) (-y)) $ computePolygonVisibility (psHole spec) (V2 x y)
         | x <- [minX..maxX], y <- [minY..maxY]
         ]
   let validTargets (V2 x y)
-        | A.inRange bounds (x, y) = validSegments A.! (x, y)
+        | A.inRange bounds (x, y) = validDeltas A.! (x, y)
         | otherwise = R2.empty
   let numVs = length $ psOriginalVertices spec
   forM_ [0 .. numVs - 1] $ \i -> do
@@ -165,11 +175,12 @@ vertexCircuit !spec = do
         Full -> pure () -- unreachable
         Finite new' -> do
           forM_ neighbors $ \(j, admDelta) -> do
-            let !admissible = R2.unions
-                  [ R2.shift pos admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
-            trigger j $ Finite admissible
+            when (R2.size new' < 1000) $ do
+              let !admissible = R2.unions
+                    [ R2.shift pos $ admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
+              trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
-  pure circ
+  pure ((`R2.member` insides), \(S2V2 a b) -> (b .-. a) `R2.member` validTargets a, circ)
 
 iterateCircuit :: CircuitState ZSet -> ([V2] -> IO ()) -> IO ()
 iterateCircuit circ cb = go circ
@@ -184,14 +195,30 @@ iterateCircuit circ cb = go circ
           [] -> cb $ getSingleton . snd <$> nodes
           unresolved -> do
             let (!i, !locs) = minimumBy (comparing $ R2.size . snd) unresolved
-            --putStrLn $ "{ Forking in " <> show (S.size locs) <> " ways"
+            --putStr $ "{" <> show (R2.size locs)
+            --hFlush stdout
             --putStrLn $ "{ Fixing " <> show i
-            experiment_ circ (R2.toList locs) $ \circ loc -> do
+            locs' <- shuffle $ R2.toList locs
+            experiment_ circ locs' $ \circ loc -> do
               triggerNode circ i (Finite $ R2.singleton loc)
               --putStrLn $ "Assuming " <> show i <> " -> " <> show loc
               go circ
             --putStrLn $ "} Fixing " <> show i
-            --putStrLn "}"
+            --putStr "}"
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
     getSingleton (Finite s) = R2.findAny s
+
+shuffle :: [a] -> IO [a]
+shuffle xs = do
+        ar <- newArray n xs
+        forM [1..n] $ \i -> do
+            j <- randomRIO (i,n)
+            vi <- A.readArray ar i
+            vj <- A.readArray ar j
+            A.writeArray ar j vi
+            return vj
+  where
+    n = length xs
+    newArray :: Int -> [a] -> IO (A.IOArray Int a)
+    newArray n xs = A.newListArray (1,n) xs

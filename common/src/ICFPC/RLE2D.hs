@@ -13,6 +13,7 @@ member (V2 x y) (RLE2D m) = case IM.lookup y m of
   Nothing -> False
   Just s -> x `R.member` s
 
+{-# INLINE fromAscList #-}
 fromAscList :: [(Int, R.RLE)] -> RLE2D
 fromAscList xs = RLE2D $ IM.fromAscList xs
 
@@ -22,6 +23,7 @@ fromList xs = RLE2D $ IM.unionsWith R.union [IM.singleton y $ R.singleton x | V2
 toList :: RLE2D -> [V2]
 toList (RLE2D m) = [V2 x y | (y, s) <- IM.toList m, x <- R.toList s]
 
+{-# INLINE unions #-}
 unions :: [RLE2D] -> RLE2D
 unions xss = RLE2D $ IM.unionsWith R.union [xs | RLE2D xs <- xss]
 
@@ -32,9 +34,11 @@ toRuns (RLE2D m) = [(x1, x2, y) | (y, s) <- IM.toList m, (x1, x2) <- R.toRuns s]
 empty :: RLE2D
 empty = RLE2D IM.empty
 
+{-# INLINE isSubsetOf #-}
 isSubsetOf :: RLE2D -> RLE2D -> Bool
 isSubsetOf (RLE2D m1) (RLE2D m2) = IM.isSubmapOfBy R.isSubsetOf m1 m2
 
+{-# INLINE intersection #-}
 intersection :: RLE2D -> RLE2D -> RLE2D
 intersection (RLE2D m1) (RLE2D m2) = RLE2D (IM.filter (not . R.null) $ IM.intersectionWith R.intersection m1 m2)
 
@@ -51,6 +55,7 @@ findAny (RLE2D m) = case head $ IM.toList m of
 delete :: V2 -> RLE2D -> RLE2D
 delete (V2 x y) (RLE2D m) = RLE2D $ IM.update (\s -> let s' = R.delete x s in if R.null s' then Nothing else Just s') y m
 
+{-# INLINE shift #-}
 shift :: V2 -> RLE2D -> RLE2D
 shift (V2 x y) (RLE2D m) = RLE2D $ IM.mapKeysMonotonic (+ y) $ IM.map (R.shift x) m
 
