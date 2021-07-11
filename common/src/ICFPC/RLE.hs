@@ -1,6 +1,8 @@
 {-# LANGUAGE DerivingStrategies, BangPatterns #-}
 module ICFPC.RLE where
 
+import qualified Data.IntMap as IM
+
 -- run length encoded set of ints
 -- a pair (a, b) in the sequence encodes an interval [a, b)
 -- b must be greater than a, but smaller than the next a in the list
@@ -63,3 +65,18 @@ union (RLESeq is) (RLESeq js) = RLESeq $ fromFlips $ merge00 (toFlips is) (toFli
       LT -> merge01 is (j:js)
       EQ -> i:merge00 is js
       GT -> merge10 (i:is) js
+
+-- a tree version of the above sequence, for efficient member lookup
+newtype RLESet = RLESet (IM.IntMap Int)
+  deriving (Eq, Ord, Show)
+
+fromSeq :: RLESeq -> RLESet
+fromSeq (RLESeq is) = RLESet $ IM.fromList is
+
+toSeq :: RLESet -> RLESeq
+toSeq (RLESet m) = RLESeq $ IM.toList m
+
+member :: Int -> RLESet -> Bool
+member x (RLESet m) = case IM.lookupLE x m of
+  Nothing -> False
+  Just (_, b) -> x < b

@@ -10,6 +10,9 @@ newtype IntPairMap a = IntPairMap (IM.IntMap (IM.IntMap a))
 toList :: IntPairMap a -> [(Int, Int, a)]
 toList (IntPairMap m) = [(a, b, x) | (a, s) <- IM.toList m, (b, x) <- takeWhile ((<= a) . fst) $ IM.toList s]
 
+toSourcedList :: IntPairMap a -> [(Int, [(Int, a)])]
+toSourcedList (IntPairMap m) = [(a, takeWhile ((<= a) . fst) $ IM.toList s) | (a, s) <- IM.toList m]
+
 fromList :: [(Int, Int, a)] -> IntPairMap a
 fromList = IntPairMap . go IM.empty
   where

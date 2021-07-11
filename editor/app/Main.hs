@@ -15,11 +15,15 @@ import qualified Data.ByteString.Lazy as BSL
 import Control.Arrow
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
+import Data.Ratio
 
+import ICFPC.DbList
 import ICFPC.JSON
 import ICFPC.Geometry
 import ICFPC.Triangulate
 import qualified ICFPC.Vector as V
+import ICFPC.Rational
+import ICFPC.Polygon hiding (Polygon)
 
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
@@ -41,6 +45,7 @@ data World = World
   , wShowTriangulation :: Bool
   , wTriangulation :: [(V.V2, V.V2, V.V2)]
   , wTriangulationElems :: Int
+  , wView :: Bool
   }
 
 data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
@@ -104,6 +109,7 @@ main = do
       , wShowTriangulation = False
       , wTriangulation = triangulate (map (\(x, y) -> V.V2 x y) hole)
       , wTriangulationElems = -1
+      , wView = False
       }
     worldPicture
     onEvent
@@ -201,6 +207,7 @@ onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode           = 
 onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation  = not (wShowTriangulation world) }
 onEvent (EventKey (Char '>') Up _ _) world = pure world { wTriangulationElems = min ((wTriangulationElems world) + 1) (length $ wTriangulation world)}
 onEvent (EventKey (Char '<') Up _ _) world = pure world { wTriangulationElems = max ((wTriangulationElems world) - 1) (-1)}
+onEvent (EventKey (Char 'v') Up _ _) world = pure world { wView = not (wView world) }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -218,6 +225,7 @@ worldPicture world = pure $ Pictures $
   , figurePicture (wEpsilon world) (wEdges world) (wVertices world) (wSelection world) (wHideSimple world)
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
+  , viewPicture (wView world) (wHole world) (wMouseCoords world)
   , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
   ] ++ circles ++ holeTriangulation ++ map showBonus (wBonuses world)
   where
@@ -331,6 +339,17 @@ holePicture xs = Pictures $
 cursorPicture :: Point -> Picture
 cursorPicture coords = case fromIntegerPoint coords of
   (x, y) -> Color blue $ Translate x y $ ThickCircle 0.25 0.5
+
+viewPicture :: Bool -> Polygon -> Point -> Picture
+viewPicture False _ _ = Blank
+viewPicture True bs coords = case fromIntegerPoint coords of
+  (x, y) -> Pictures $
+      [ Pictures [ Color (withAlpha 0.5 yellow) $ Polygon [(x, y), q2ToF q1, q2ToF q2]
+                 , Color magenta $ Line [q2ToF q1, q2ToF q2]
+                 ]
+      | (q1, q2) <- cycPairs $ computePolygonVisibility (mkPolyCCW $ mkPolygon $ V.packV2 <$> bs) (V.packV2 coords)
+      ]
+  where q2ToF (Q2 x y) = (fromIntegral (numerator x) / fromIntegral (denominator x), fromIntegral (numerator y) / fromIntegral (denominator y))
 
 fromIntegerPoint :: Num a => Point -> (a, a)
 fromIntegerPoint = fromIntegral *** fromIntegral

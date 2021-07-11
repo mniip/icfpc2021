@@ -3,11 +3,16 @@
 module ICFPC.Polygon where
 
 import qualified Data.IntMap.Strict as IM
-import Data.List (sortBy)
+import Control.Monad
+import Data.List (sortBy, foldl', minimumBy)
 import Data.Ord
+import Data.Maybe
 import Data.Ratio
+import Data.List
 
+import ICFPC.DbList
 import ICFPC.Vector
+import ICFPC.Rational
 import qualified ICFPC.RLE as RLE
 
 data PolyVertex = PolyVertex
@@ -31,24 +36,36 @@ instance Show Polygon where
   showsPrec d (Polygon ps) = showParen (d > 9) $ showString "mkPolygon " . showsPrec 10 (pVertex <$> ps)
 
 mkPolygon :: [V2] -> Polygon
-mkPolygon [] = Polygon []
-mkPolygon [v] = let node = PolyVertex v node node in Polygon [node]
-mkPolygon (v:u:us) = let
-  !(last, second, list) = go first first u us
-  first = PolyVertex v last second
-  in Polygon (first:list)
-  where
-    go first prev v [] = let node = PolyVertex v prev first in (node, node, [node])
-    go first prev v (u:us) = let
-      !(last, next, list) = go first node u us
-      node = PolyVertex v prev next
-      in (last, node, node:list)
+mkPolygon vs = Polygon $ mkCycDbList (\prev v next -> PolyVertex v prev next) vs
 
 -- returns 2x the signed area of the polygon
 polySignedArea2x :: Polygon -> Int
 polySignedArea2x (Polygon ((pVertex -> a):(pVertex -> b):vs)) = sum [signedArea ba (pVertex v .-. a) | v <- vs]
   where !ba = b .-. a
 polySignedArea2x _ = 0
+
+mkPolyCCW :: Polygon -> Polygon
+mkPolyCCW poly@(Polygon vs)
+  | polySignedArea2x poly >= 0 = poly
+  | otherwise = mkPolygon $ reverse $ pVertex <$> vs
+
+polyBoundingBox :: Polygon -> S2
+polyBoundingBox (Polygon (map pVertex -> (v:vs))) = foldl' minMax (S2V2 v v) vs
+  where
+    minMax (S2 x1 y1 x2 y2) (V2 x y) = S2 (min x x1) (min y y1) (max x x2) (max y y2)
+
+type PolygonInternals = IM.IntMap RLE.RLESet
+
+inPolygonInternals :: V2 -> PolygonInternals -> Bool
+inPolygonInternals (V2 x y) m = case IM.lookup y m of
+  Nothing -> False
+  Just s -> x `RLE.member` s
+
+computePolygonInternals :: Polygon -> PolygonInternals
+computePolygonInternals poly = IM.map RLE.fromSeq $
+  IM.unionsWith RLE.union [fillTriangle a b c | (a, b, c) <- triangulation poly]
+  where
+    triangulation = error "not implemented"
 
 -- map from y to run of x's
 --    T         T
@@ -80,9 +97,6 @@ fillTriangle !a !b !c = IM.fromAscList $ if signedArea (mid .-. bottom) (top .-.
     floorDiv p q = p `div` q
     ceilDiv p q = -((-p) `div` q)
 
-data Q2 = Q2 {-# UNPACK #-} !(Ratio Int) !(Ratio Int)
-  deriving stock (Eq, Ord, Show)
-
 fillTriangleQ :: Q2 -> Q2 -> Q2 -> IM.IntMap RLE.RLESeq
 fillTriangleQ !a !b !c = IM.fromAscList $ if signedAreaQ (mid ~-~ bottom) (top ~-~ bottom) >= 0
   then [(y, RLE.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [qCeil by .. qFloor my]] <>
@@ -102,9 +116,70 @@ fillTriangleQ !a !b !c = IM.fromAscList $ if signedAreaQ (mid ~-~ bottom) (top ~
       | ay == by = qFloor $ max ax bx
       | otherwise = qFloor $ bx + (by - y % 1) * (ax - bx) / (by - ay)
 
-    qFloor q = numerator q `div` denominator q
-    qCeil q = -((-numerator q) `div` denominator q)
+-- signed angle from a to b is in [0, pi)
+angle0ToPiExcl :: V2 -> V2 -> Bool
+angle0ToPiExcl a b = (signedArea a b, a `dot` b) >= (0, 0)
 
-    Q2 x1 y1 ~-~ Q2 x2 y2 = Q2 (x1 - x2) (y1 - y2)
+data Obstruction = ObstrFull | ObstrCW | ObstrCCW
+  deriving stock (Eq, Ord, Show)
 
-    signedAreaQ (Q2 x1 y1) (Q2 x2 y2) = x1 * y2 - y1 * x2
+--computePolygonVisibility :: Polygon -> V2 -> PolygonInternals
+computePolygonVisibility (Polygon vs) org = star
+{-IM.map RLE.fromSeq $
+  IM.unionsWith RLE.union [fillTriangleQ (v2ToQ2 org) a b | (a, b) <- cycPairs star]-}
+  where
+    vertices = sortBy (comparing angle) $ filter (/= org) $ pVertex <$> vs
+
+    star = case find ((== org) . pVertex) vs of
+      Nothing -> concatMap castRay vertices
+      Just pv
+        | let !prev = angle $ pVertex $ pPrevVertex pv
+        , let !next = angle $ pVertex $ pNextVertex pv
+        -> if next <= prev
+           then v2ToQ2 org : concatMap castRay (filter (\v -> angle v >= next && angle v <= prev) vertices)
+           else let (xs, rs) = span (\v -> angle v <= prev) vertices
+                    ys = dropWhile (\v -> angle v < next) rs
+                in v2ToQ2 org : concatMap castRay (ys ++ xs)
+
+    between a b x = if a <= b then a <= x && x <= b else b <= x || x <= a
+
+    angle :: V2 -> (Int, Ratio Int)
+    angle v = case v .-. org of
+      V2 dx dy
+        | dx > 0, dy >= 0 -> (0, dy % dx)
+        | dy > 0, dx <= 0 -> (1, -dx % dy)
+        | dx < 0, dy <= 0 -> (2, dy % dx)
+        | dy < 0, dx >= 0 -> (3, -dx % dy)
+        | otherwise -> error "angle of 0"
+
+    castRay targ
+      | otherwise = collect Nothing Nothing Nothing $ mapMaybe (rayIntersection targ) vs
+      where
+        collect !cw !here !ccw [] = (v2ToQ2 org ~+~) <$> catMaybes [cw, here, ccw]
+        collect !cw !here !ccw ((ObstrFull, q):os) = collect (upd q cw) (upd q here) (upd q ccw) os
+        collect !cw !here !ccw ((ObstrCW, q):os) = collect (upd q cw) here ccw os
+        collect !cw !here !ccw ((ObstrCCW, q):os) = collect cw here (upd q ccw) os
+        upd q1 Nothing = Just q1
+        upd q1 (Just q2) = Just $ if q1 `dotQ` q1 < q2 `dotQ` q2 then q1 else q2
+
+    rayIntersection targ pv
+      | signedArea (a .-. org) dir == 0 && adist >= 0 -- hit a vertex
+      = case (angle0ToPiExcl dir (a .-. c), angle0ToPiExcl (a .-. b) dir) of
+        (True, True) -> Just (ObstrFull, v2ToQ2 $ a .-. org)
+        (True, False) | adist > 0 -> Just (ObstrCW, v2ToQ2 $ a .-. org)
+        (False, True) | adist > 0 -> Just (ObstrCCW, v2ToQ2 $ a .-. org)
+        _ -> Nothing
+      | not $ separatesStrictly (S2V2 org targ) a b = Nothing -- implies det /= 0
+      -- else hit edge
+      | signedArea dir (b .-. a) <= 0 = Nothing -- hit it from behind
+      | otherwise = case signedArea (a .-. org) (b .-. org) .*. dir of
+        d@(V2 x y) | det * (d `dot` dir) >= 0 -> Just $ (ObstrFull, Q2 (x % det) (y % det))
+                   | otherwise -> Nothing
+      where
+        !a = pVertex pv
+        !adist = (a .-. org) `dot` dir
+        !b = pVertex $ pNextVertex pv
+        bdist = (b .-. org) `dot` dir
+        c = pVertex $ pPrevVertex pv
+        !dir = targ .-. org
+        det = signedArea (a .-. b) dir
