@@ -172,7 +172,7 @@ computePolygonVisibility (Polygon vs) org = star
       -- else hit edge
       | signedArea dir (b .-. a) <= 0 = Nothing -- hit it from behind
       | otherwise = case signedArea (a .-. org) (b .-. org) .*. dir of
-        d@(V2 x y) | det * (d `dot` dir) >= 0 -> Just $ (ObstrFull, Q2 (x % det) (y % det))
+        d@(V2 x y) | productSign det (d `dot` dir) /= LT -> Just $ (ObstrFull, Q2 (x % det) (y % det))
                    | otherwise -> Nothing
       where
         !a = pVertex pv
