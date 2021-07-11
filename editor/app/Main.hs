@@ -18,6 +18,8 @@ import qualified Data.Map.Strict as M
 
 import ICFPC.JSON
 import ICFPC.Geometry
+import ICFPC.Triangulate
+import qualified ICFPC.Vector as V
 
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
@@ -34,6 +36,8 @@ data World = World
   , wHideSimple :: Bool
   , wVisualizeDislikes :: Bool
   , wChains :: [(Int, Int, Dist)]
+  , wShowTriangulation :: Bool
+  , wTriangulation :: [(V.V2, V.V2, V.V2)]
   }
 
 
@@ -83,8 +87,10 @@ main = do
       , wSelectionRect = Nothing
       , wSaveFile = solFile
       , wHideSimple = False
-      , wVisualizeDislikes = True
+      , wVisualizeDislikes = False
       , wChains = calcChains edges vertices
+      , wShowTriangulation = False
+      , wTriangulation = triangulate (map (\(x, y) -> V.V2 x y) hole)
       }
     worldPicture
     onEvent
@@ -173,6 +179,7 @@ onEvent (EventKey (Char '1') Down _ coord) world = do
   pure world { wVertices = newVertices }
 onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple        = not (wHideSimple world) }
 onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes = not (wVisualizeDislikes world) }
+onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation = not (wShowTriangulation world) }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -191,7 +198,7 @@ worldPicture world = pure $ Pictures $
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
   , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
-  ] ++ circles
+  ] ++ circles ++ holeTriangulation
   where
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
@@ -199,6 +206,7 @@ worldPicture world = pure $ Pictures $
     filterHide = if wHideSimple world then filter (\(u, v, d) -> not $ isEdgeToSimple (wEdges world) (u, v))
                  else id
     circles = if wVisualizeDislikes world then [visualizeDislikesPicture (wHole world) (wVertices world)] else []
+    holeTriangulation = if wShowTriangulation world then [triangulationPicture (wTriangulation world)] else []
 
 valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
 valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
@@ -233,6 +241,12 @@ visualizeDislikesPicture hole pose = Pictures $ map (\((x, y), r) -> Color blue 
   where
     circles = zip (fromIntegerPointList hole) [ minimum [dist h v | v <- pose] | h <- hole]
 
+triangulationColor = white
+triangulationPicture :: [(V.V2, V.V2, V.V2)] -> Picture
+triangulationPicture triangles = Pictures $ map (Color triangulationColor) $ concatMap (\(p1, p2, p3) -> [Line [p1, p2], Line [p2, p3], Line [p1, p3]]) (map fromIntegerTriangles triangles)
+  where
+    fromIntegerTriangles (V.V2 p1x p1y, V.V2 p2x p2y, V.V2 p3x p3y) =
+      ((fromIntegral p1x, fromIntegral p1y), (fromIntegral p2x, fromIntegral p2y), (fromIntegral p3x, fromIntegral p3y))
 
 vdiv (x,y) l = (x `div` l, y `div` l)
 vmul (x,y) l = (x*l, y*l)
