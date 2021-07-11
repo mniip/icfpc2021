@@ -33,6 +33,7 @@ data World = World
   , wDragging :: Maybe Point
   , wDragMode :: DragMode
   , wEpsilon :: Int
+  , wBonuses :: [BonusDescription]
   , wSaveFile :: FilePath
   , wHideSimple :: Bool
   , wVisualizeDislikes :: Bool
@@ -93,6 +94,7 @@ main = do
       , wDragging = Nothing
       , wDragMode = DragSimple
       , wEpsilon = prEpsilon problem
+      , wBonuses = prBonuses problem
       , wSelection = S.empty
       , wSelectionRect = Nothing
       , wSaveFile = solFile
@@ -217,7 +219,7 @@ worldPicture world = pure $ Pictures $
   , Color white $ selectionPicture (wSelectionRect world)
   , cursorPicture $ wMouseCoords world
   , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
-  ] ++ circles ++ holeTriangulation
+  ] ++ circles ++ holeTriangulation ++ map showBonus (wBonuses world)
   where
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
@@ -227,6 +229,12 @@ worldPicture world = pure $ Pictures $
     circles = if wVisualizeDislikes world then [visualizeDislikesPicture (wHole world) (wVertices world)] else []
     holeTriangulation = if wShowTriangulation world then [triangulationPicture (triangulationTail $ wTriangulation world)] else []
     triangulationTail tr = if wTriangulationElems world == -1 then tr else drop (length tr - wTriangulationElems world) tr
+    showBonus bonus = let (x, y) = fromIntegerPoint $ bdPosition bonus
+                          color = case bdBonus bonus of
+                                      Globalist -> yellow
+                                      BreakALeg -> blue
+                                      WallHack -> orange
+                      in Color (withAlpha 0.5 color) $ Translate x y $ ThickCircle 1 2
 
 validShort :: World -> [Point] -> (Bool, Bool)
 validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
