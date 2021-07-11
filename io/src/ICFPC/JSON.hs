@@ -39,18 +39,20 @@ instance FromJSON Figure where
     <$> explicitParseField (listParser parseJSONPair) obj "vertices"
     <*> explicitParseField (listParser parseJSONPair) obj "edges"
 
-data BonusType = Globalist | BreakALeg | WallHack
+data BonusType = Globalist | BreakALeg | WallHack | SuperFlex
   deriving stock (Eq, Ord, Show)
 
 instance ToJSON BonusType where
   toJSON Globalist = String "GLOBALIST"
   toJSON BreakALeg = String "BREAK_A_LEG"
   toJSON WallHack = String "WALLHACK"
+  toJSON SuperFlex = String "SUPERFLEX"
 
 instance FromJSON BonusType where
   parseJSON (String "GLOBALIST") = pure Globalist
   parseJSON (String "BREAK_A_LEG") = pure BreakALeg
   parseJSON (String "WALLHACK") = pure WallHack
+  parseJSON (String "SUPERFLEX") = pure SuperFlex
   parseJSON _ = fail "BonusType"
 
 data BonusDescription = BonusDescription
