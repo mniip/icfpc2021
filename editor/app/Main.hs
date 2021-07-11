@@ -45,7 +45,7 @@ data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
 
 nextDrag :: DragMode -> DragMode
 nextDrag DragSimple = FollowDelta
-nextDrag FollowDelta = NearestValid
+nextDrag FollowDelta = DragSimple -- NearestValid -- TODO
 nextDrag NearestValid = DragSimple
 
 
