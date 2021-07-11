@@ -31,6 +31,7 @@ data World = World
   , wSelection :: S.Set Int
   , wSelectionRect :: Maybe (Point, Point)
   , wDragging :: Maybe Point
+  , wDragMode :: DragMode
   , wEpsilon :: Int
   , wSaveFile :: FilePath
   , wHideSimple :: Bool
@@ -39,6 +40,13 @@ data World = World
   , wShowTriangulation :: Bool
   , wTriangulation :: [(V.V2, V.V2, V.V2)]
   }
+
+data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
+
+nextDrag :: DragMode -> DragMode
+nextDrag DragSimple = FollowDelta
+nextDrag FollowDelta = NearestValid
+nextDrag NearestValid = DragSimple
 
 
 neighbours :: [(Int, Int, Dist)] -> Int -> [(Int, Dist)]
@@ -82,6 +90,7 @@ main = do
       , wVertices = vertices
       , wMouseCoords = (0, 0)
       , wDragging = Nothing
+      , wDragMode = DragSimple
       , wEpsilon = prEpsilon problem
       , wSelection = S.empty
       , wSelectionRect = Nothing
@@ -106,7 +115,12 @@ onEvent (EventMotion coords) world = do
       Just (tl, _) -> pure world' { wSelectionRect = Just (tl, newCoords) }
     Just prev -> do
       let delta = newCoords .-. prev
-      let newVertices = foldl' (\xs i -> withNth i (.+. delta) xs) (wVertices world') $ S.toList $ wSelection world'
+      let newVertices = if delta == (0, 0) then (wVertices world') else
+                        case wDragMode world of
+                          DragSimple   -> moveSelected (.+. delta) (wSelection world', wSelection world') (wVertices world')
+                          FollowDelta  -> applyMoverBfs (moveSelected (.+. delta)) (wSelection world', wSelection world') (wVertices world') world'
+                          NearestValid -> applyMoverBfs (moveToNearestValid world') (wSelection world', wSelection world') (wVertices world') world'
+        --foldl' (\xs i -> withNth i (.+. delta) xs) (wVertices world') $ S.toList $ wSelection world'
       pure world'
         { wVertices = newVertices
         , wDragging = Just newCoords
@@ -179,6 +193,7 @@ onEvent (EventKey (Char '1') Down _ coord) world = do
   pure world { wVertices = newVertices }
 onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple        = not (wHideSimple world) }
 onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes = not (wVisualizeDislikes world) }
+onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode          = nextDrag (wDragMode world) }
 onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation = not (wShowTriangulation world) }
 onEvent event world = pure world
 
@@ -207,6 +222,9 @@ worldPicture world = pure $ Pictures $
                  else id
     circles = if wVisualizeDislikes world then [visualizeDislikesPicture (wHole world) (wVertices world)] else []
     holeTriangulation = if wShowTriangulation world then [triangulationPicture (wTriangulation world)] else []
+
+validShort :: World -> [Point] -> (Bool, Bool)
+validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
 
 valid :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> [Point] -> (Bool, Bool)
 valid eps bs es vs = (all (\(u, v, d) -> segmentInPolygon bs (vs !! u, vs !! v)) es,
@@ -324,3 +342,39 @@ boundingViewPort xs = case fromIntegerPoint *** fromIntegerPoint $ boundingGrid 
     , viewPortScale = min (1920 / (1 + maxX - minX)) (1080 / (1 + maxY - minY))
     , viewPortRotate = 0
     }
+
+getNeighbours :: [(Int, Int, Dist)] -> S.Set Int -> (S.Set Int, S.Set Int)
+getNeighbours edges nodes = foldl (addIfNeighbour) (nodes, S.empty) edges
+  where
+    addIfNeighbour :: (S.Set Int, S.Set Int) -> (Int, Int, Dist) -> (S.Set Int, S.Set Int)
+    addIfNeighbour acc@(all, new) (l, r, _) = if      l `S.member` nodes && not (r `S.member` nodes) then (r `S.insert` all, r `S.insert` new)
+                                              else if r `S.member` nodes && not (l `S.member` nodes) then (l `S.insert` all, l `S.insert` new)
+                                              else acc
+
+getNeighboursWithDists :: [(Int, Int, Dist)] -> Int -> [(Int, Dist)]
+getNeighboursWithDists edges node = filterMap (\(i, j, d) -> if i == node then Just (j, d)
+                                                             else if j == node then Just (i, d)
+                                                             else Nothing) edges
+  where
+    filterMap f l = map (maybe (0, 0) id) $ filter (/= Nothing) $ map f l
+
+moveSelected :: (Point -> Point) -> (S.Set Int, S.Set Int) -> [Point] -> [Point]
+moveSelected mover (_, selected) verts = foldl' (\xs i -> if S.member i selected then withNth i mover xs else xs) verts $ S.toList $ selected
+
+-- TODO
+moveToNearestValid :: World -> (S.Set Int, S.Set Int) -> [Point] -> [Point]
+moveToNearestValid w (all, new) verts = moveSelected moveToValidByAll (all, new) verts
+  where
+    moveToValidByAll p = getNearest (allowedPositions (wHole w) (wEpsilon w) neighbs)
+      where
+        Just p_idx = elemIndex p verts
+        neighbs = map (\(i, d) -> (verts !! i, d)) $ filter (\(i, d) -> i `S.member` (all `S.difference` new)) $ getNeighboursWithDists (wEdges w) p_idx
+        getNearest ps = if null ps then p .+. (0, 1) else minimumBy (\p1 p2 -> compare (dist p p1) (dist p p2)) ps
+
+applyMoverBfs :: ((S.Set Int, S.Set Int) -> [Point] -> [Point]) -> (S.Set Int, S.Set Int) -> [Point] -> World -> [Point]
+applyMoverBfs mover (all, new) result_acc world = if S.size all == length result_acc then wVertices world
+                                                  else if dist_ok then movedPoints
+                                                  else applyMoverBfs mover (getNeighbours (wEdges world) all) movedPoints world
+  where
+    movedPoints = mover (all, new) result_acc
+    (inside_ok, dist_ok) = validShort world movedPoints
