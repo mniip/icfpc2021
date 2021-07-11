@@ -13,6 +13,7 @@ member (V2 x y) (RLE2D m) = case IM.lookup y m of
   Nothing -> False
   Just s -> x `R.member` s
 
+{-# INLINE fromAscList #-}
 fromAscList :: [(Int, R.RLE)] -> RLE2D
 fromAscList xs = RLE2D $ IM.fromAscList xs
 
