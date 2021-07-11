@@ -16,6 +16,7 @@ import Control.Arrow
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 import Data.Ratio
+import Data.Function (on)
 
 import ICFPC.DbList
 import ICFPC.JSON
@@ -201,6 +202,9 @@ onEvent (EventKey (Char 'f') Down _ coord) world = do
 onEvent (EventKey (Char '1') Down _ coord) world = do
   let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world)
   pure world { wVertices = newVertices }
+onEvent (EventKey (Char '2') Down _ coord) world = do
+  let newVertices = improvePoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
+  pure world { wVertices = newVertices }
 onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple         = not (wHideSimple world) }
 onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes  = not (wVisualizeDislikes world) }
 onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode           = nextDrag (wDragMode world) }
@@ -304,6 +308,23 @@ adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
 adjustPoints eps is xs = zipWith go [0..] xs
     where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
           go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
+
+
+-- Move point to the best "green" location
+improvePoint :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe Point
+improvePoint eps is xs bs i = if null variants then Nothing else Just . snd $ minimumBy (compare `on` fst) variants
+    where coords = allowedPositions bs eps jss
+          jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] <> [(xs !! j, d) | (j, i', d) <- is, i' == i]
+          replace p = let (before, after) = splitAt i xs in before ++ p:tail after
+          variants = map (\p -> (dislikes bs (replace p), p)) coords
+
+-- Improve all points in order
+improvePoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+improvePoints eps is xs bs = go $ zip [0..] xs
+    where go [] = []
+          go ((i,p):pps) = case improvePoint eps is xs bs i of
+                             Nothing -> p : go pps
+                             Just p' -> p' : go pps
 
 figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Bool -> Picture
 figurePicture eps is xs selected hideSimple = Pictures $
