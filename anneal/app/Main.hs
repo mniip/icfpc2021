@@ -19,15 +19,14 @@ main = do
   [probFile, solFile] <- getArgs
   problem <- decodeProblem <$> BSL.readFile probFile
   eSolution <- try @SomeException $ evaluate =<< decodePose <$> BSL.readFile solFile
-  gen <- newIOGenM =<< newStdGen
-
   let boundary = prHole problem
   let !edges = mkEdges (mkVertices $ figVertices $ prFigure problem) (figEdges $ prFigure problem)
-  vertices <- mkVertices `fmap` case eSolution of
-        Left _ -> randomInit gen boundary (length . figVertices $ prFigure problem) -- return $ figVertices (prFigure problem)
-        Right sol -> return $ poseVertices sol
+  let !vertices = mkVertices $ case eSolution of
+        Left _ -> figVertices (prFigure problem)
+        Right sol -> poseVertices sol
   let !eps = prEpsilon problem
 
+  gen <- newIOGenM =<< newStdGen
   let
     go best temp vs = do
       vs_raw <- pickNeighbor eps boundary edges gen 64 temp vs
