@@ -146,7 +146,7 @@ zSize (Finite s) = R2.size s
 admissibleRing :: Epsilon -> Dist -> R2.RLE2D
 admissibleRing eps d = R2.fromList $ map packV2 $ stretchAnnulus eps d
 
-vertexCircuit :: ProblemSpec -> IO (CircuitState ZSet)
+vertexCircuit :: ProblemSpec -> IO (V2 -> Bool, S2 -> Bool, CircuitState ZSet)
 vertexCircuit !spec = do
   circ <- newCircuitState
   let !insides = computePolygonInternals $ psHole spec
@@ -178,7 +178,7 @@ vertexCircuit !spec = do
                     [ R2.shift pos admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
               trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
-  pure circ
+  pure ((`R2.member` insides), \(S2V2 a b) -> b `R2.member` validTargets a, circ)
 
 iterateCircuit :: CircuitState ZSet -> ([V2] -> IO ()) -> IO ()
 iterateCircuit circ cb = go circ

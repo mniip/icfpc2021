@@ -27,13 +27,13 @@ main = do
 
   bestRef <- newIORef Nothing
 
-  circ <- vertexCircuit spec
+  (vInPoly, sInPoly, circ) <- vertexCircuit spec
   runCircuit circ
 
   putStrLn $ solFile <> ": Init"
 
   let
-    report vs = case checkSolution spec $ Pose (unpackV2 <$> vs) [] of
+    report vs = case checkSolutionWithCache vInPoly sInPoly spec $ Pose (unpackV2 <$> vs) [] of
         Left str -> putStrLn $ "Invalid solution: " <> str <> " : " <> show vs
         Right score -> do
           isBest <- atomicModifyIORef' bestRef $ \mBest -> if maybe True (> score) mBest then (Just score, True) else (mBest, False)
