@@ -1,82 +1,159 @@
 {-# LANGUAGE DerivingStrategies, BangPatterns #-}
 module ICFPC.RLE where
 
-import qualified Data.IntMap as IM
+import Data.List (foldl')
 
 -- run length encoded set of ints
 -- a pair (a, b) in the sequence encodes an interval [a, b)
 -- b must be greater than a, but smaller than the next a in the list
-newtype RLESeq = RLESeq [(Int, Int)]
+newtype RLE = RLE [(Int, Int)]
   deriving stock (Eq, Ord, Show)
 
-empty :: RLESeq
-empty = RLESeq []
+empty :: RLE
+empty = RLE []
 
 -- encode an interval [a, b)
-run :: Int -> Int -> RLESeq
+run :: Int -> Int -> RLE
 run a b
-  | a < b = RLESeq [(a, b)]
+  | a < b = RLE [(a, b)]
   | otherwise = empty
 
-singleton :: Int -> RLESeq
-singleton a = RLESeq [(a, a + 1)]
+singleton :: Int -> RLE
+singleton a = RLE [(a, a + 1)]
 
-toList :: RLESeq -> [Int]
-toList (RLESeq is) = [x | (a, b) <- is, x <- [a..b-1]]
+toList :: RLE -> [Int]
+toList (RLE is) = [x | (a, b) <- is, x <- [a..b-1]]
+
+toRuns :: RLE -> [(Int, Int)]
+toRuns (RLE is) = is
 
 -- strictly ascending
-fromAscList :: [Int] -> RLESeq
+fromAscList :: [Int] -> RLE
 fromAscList [] = empty
-fromAscList (x:xs) = RLESeq $ go x x xs
+fromAscList (x:xs) = RLE $ go x x xs
   where
     go !a !b [] = [(a, b + 1)]
     go !a !b (!c:xs)
       | c == b + 1 = go a (b + 1) xs
       | otherwise = (a, b + 1):go c c xs
 
-union :: RLESeq -> RLESeq -> RLESeq
-union (RLESeq is) (RLESeq js) = RLESeq $ fromFlips $ merge00 (toFlips is) (toFlips js)
+union :: RLE -> RLE -> RLE
+union (RLE is) (RLE js) = RLE $ merge00 is js
   where
-    toFlips = concatMap (\(a, b) -> [a, b])
-    fromFlips [] = []
-    fromFlips (a:b:es) = (a, b):fromFlips es
-    fromFlips _ = error "fromFlips"
     merge00 [] js = js
     merge00 is [] = is
+    merge00 (i@(a, b):is) (j@(c, d):js) = case compare a c of
+      LT -> merge10 a b is (j:js)
+      EQ -> merge11 a b is d js
+      GT -> merge01 c (i:is) d js
+    merge01 p [] d js = (p, d):js
+    merge01 p (i@(a, b):is) d js = case compare a d of
+      LT -> merge11 p b is d js
+      EQ -> merge10 p b is js
+      GT -> (p, d):merge00 (i:is) js
+    merge10 p b is [] = (p, b):is
+    merge10 p b is (j@(c, d):js) = case compare b c of
+      LT -> (p, b):merge00 is (j:js)
+      EQ -> merge01 p is d js
+      GT -> merge11 p b is d js
+    merge11 p b is d js = case compare b d of
+      LT -> merge01 p is d js
+      EQ -> (p, b):merge00 is js
+      GT -> merge10 p b is js
+
+intersection :: RLE -> RLE -> RLE
+intersection (RLE is) (RLE js) = RLE $ merge00 is js
+  where
+    merge00 [] js = []
+    merge00 is [] = []
+    merge00 (i@(a, b):is) (j@(c, d):js) = case compare a c of
+      LT -> merge10 b is (j:js)
+      EQ -> merge11 a b is d js
+      GT -> merge01 (i:is) d js
+    merge01 [] d js = []
+    merge01 (i@(a, b):is) d js = case compare a d of
+      LT -> merge11 a b is d js
+      EQ -> merge10 b is js
+      GT -> merge00 (i:is) js
+    merge10 b is [] = []
+    merge10 b is (j@(c, d):js) = case compare b c of
+      LT -> merge00 is (j:js)
+      EQ -> merge01 is d js
+      GT -> merge11 c b is d js
+    merge11 p b is d js = case compare b d of
+      LT -> (p, b):merge01 is d js
+      EQ -> (p, b):merge00 is js
+      GT -> (p, d):merge10 b is js
+
+isSubsetOf :: RLE -> RLE -> Bool
+isSubsetOf (RLE is) (RLE js) = merge00 (toFlips is) (toFlips js)
+  where
+    toFlips = concatMap (\(a, b) -> [a, b])
+    merge00 [] js = True
+    merge00 is [] = False
     merge00 (i:is) (j:js) = case compare i j of
-      LT -> i:merge10 is (j:js)
-      EQ -> i:merge11 is js
-      GT -> j:merge01 (i:is) js
-    merge01 [] js = js
+      LT -> False
+      EQ -> merge11 is js
+      GT -> merge01 (i:is) js
+    merge01 [] js = True
     merge01 is [] = error "merge01"
     merge01 (i:is) (j:js) = case compare i j of
       LT -> merge11 is (j:js)
-      EQ -> merge10 is js
-      GT -> j:merge00 (i:is) js
-    merge10 [] js = error "merge10"
-    merge10 is [] = is
-    merge10 (i:is) (j:js) = case compare i j of
-      LT -> i:merge00 is (j:js)
-      EQ -> merge01 is js
-      GT -> merge11 (i:is) js
+      EQ -> False
+      GT -> merge00 (i:is) js
     merge11 [] js = error "merge11"
     merge11 is [] = error "merge11"
     merge11 (i:is) (j:js) = case compare i j of
       LT -> merge01 is (j:js)
-      EQ -> i:merge00 is js
-      GT -> merge10 (i:is) js
+      EQ -> merge00 is js
+      GT -> False
 
--- a tree version of the above sequence, for efficient member lookup
-newtype RLESet = RLESet (IM.IntMap Int)
-  deriving (Eq, Ord, Show)
+member :: Int -> RLE -> Bool
+member x (RLE is) = go is
+  where
+    go [] = False
+    go ((a, b):is)
+      | a > x = False
+      | x < b = True
+      | otherwise = go is
 
-fromSeq :: RLESeq -> RLESet
-fromSeq (RLESeq is) = RLESet $ IM.fromList is
+size :: RLE -> Int
+size (RLE is) = foldl' (\n (a, b) -> n + b - a) 0 is
 
-toSeq :: RLESet -> RLESeq
-toSeq (RLESet m) = RLESeq $ IM.toList m
+findAny :: RLE -> Int
+findAny (RLE ((a, _):_)) = a
 
-member :: Int -> RLESet -> Bool
-member x (RLESet m) = case IM.lookupLE x m of
-  Nothing -> False
-  Just (_, b) -> x < b
+delete :: Int -> RLE -> RLE
+delete x (RLE is) = RLE $ go is
+  where
+    go [] = []
+    go w@(ab@(a, b):is)
+      | x < a = w
+      | x == a, x + 1 == b = is
+      | x == a = (a + 1, b):is
+      | x + 1 == b = (a, b - 1):is
+      | x < b = (a, x):(x + 1, b):is
+      | otherwise = ab:go is
+
+null :: RLE -> Bool
+null (RLE []) = True
+null (RLE _) = False
+
+shift :: Int -> RLE -> RLE
+shift x (RLE is) = RLE (go is)
+  where
+    go [] = []
+    go ((a, b):is) = (a + x, b + x):go is
+
+consistency :: RLE -> ()
+consistency (RLE is) = go is
+  where
+    go [] = ()
+    go ((a, b):is)
+      | a >= b = error "R1"
+      | otherwise = go1 b is
+    go1 l [] = ()
+    go1 l ((a, b):is)
+      | l >= a = error "R2"
+      | a >= b = error "R3"
+      | otherwise = go1 b is

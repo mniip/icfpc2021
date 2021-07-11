@@ -25,3 +25,6 @@ neighbors (IntPairMap m) v =
     case m IM.!? v of
       Nothing -> []
       Just m' -> IM.toList m'
+
+lookup :: Int -> Int -> IntPairMap a -> Maybe a
+lookup a b (IntPairMap m) = IM.lookup a m >>= IM.lookup b

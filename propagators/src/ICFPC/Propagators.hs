@@ -11,9 +11,17 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
 import qualified Data.Array as A
+import Control.Exception
 import Control.Concurrent.Async
+import Control.Concurrent.MVar
 
-import ICFPC.Geometry
+import ICFPC.Geometry (stretchAnnulus)
+import ICFPC.Polygon
+import ICFPC.Vector
+import ICFPC.Problem
+import qualified ICFPC.RLE as R
+import qualified ICFPC.RLE2D as R2
+import qualified ICFPC.IntPairMap as IPM
 
 class Monoid a => Nodeable a where
   bottom :: a
@@ -107,82 +115,63 @@ experiment circ xs f = forM xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 experiment_ :: Foldable t => CircuitState a -> t b -> (CircuitState a -> b -> IO c) -> IO ()
 experiment_ circ xs f = forM_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 
-data ZSet a = Full | Finite (S.Set a)
+data ZSet = Full | Finite R2.RLE2D
   deriving (Eq, Ord, Show)
 
-instance Ord a => Semigroup (ZSet a) where
+instance Semigroup ZSet where
   Full <> s = s
   s <> Full = s
-  Finite s1 <> Finite s2 = Finite $ S.intersection s1 s2
+  Finite s1 <> Finite s2 = Finite $ R2.intersection s1 s2
 
-instance Ord a => Monoid (ZSet a) where
+instance Monoid ZSet where
   mempty = Full
 
-instance Ord a => Nodeable (ZSet a) where
-  bottom = Finite S.empty
+instance Nodeable ZSet where
+  bottom = Finite R2.empty
   isBottom = (bottom ==)
 
-isZSubset :: Ord a => ZSet a -> ZSet a -> Bool
+isZSubset :: ZSet -> ZSet -> Bool
 isZSubset _ Full = True
 isZSubset Full _ = False
-isZSubset (Finite s1) (Finite s2) = s1 `S.isSubsetOf` s2
+isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 
-type RLE = IM.IntMap Int
+admissibleRing :: Epsilon -> Dist -> R2.RLE2D
+admissibleRing eps d = R2.fromList $ map packV2 $ stretchAnnulus eps d
 
-makeRLE :: Int -> [Bool] -> RLE
-makeRLE n = goOff n IM.empty
-  where
-    goOff !n !m [] = m
-    goOff !n !m (False:xs) = goOff (n + 1) m xs
-    goOff !n !m (True:xs) = goOn n (n + 1) m xs
-    goOn !s !n !m [] = IM.insert s n m
-    goOn !s !n !m (True:xs) = goOn s (n + 1) m xs
-    goOn !s !n !m (False:xs) = goOff (n + 1) (IM.insert s n m) xs
-
-indexRLE :: RLE -> Int -> Bool
-indexRLE m n = case IM.lookupLE n m of
-  Nothing -> False
-  Just (_, k) -> n < k
-
-vertexCircuit :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> Int -> IO (CircuitState (ZSet Point))
-vertexCircuit eps bound es numVs = do
+vertexCircuit :: ProblemSpec -> IO (CircuitState ZSet)
+vertexCircuit !spec = do
   circ <- newCircuitState
-  let bounds@((!minX, !minY), (!maxX, !maxY)) = boundingBox bound
-  let !insides = S.fromList [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
-  let !validSegments = -- lazy/memoized
-          A.listArray ((minX, minY), (maxX, maxY))
-            [ A.listArray (minX, maxX)
-              [ row
-              | x2 <- [minX..maxX]
-              , let !row = makeRLE minY $ [segmentInPolygon bound ((x1, y1), (x2, y2)) | y2 <- [minY..maxY]]
-              ]
-            | x1 <- [minX..maxX], y1 <- [minY..maxY]
-            ]
-  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && indexRLE (validSegments A.! p A.! fst q) (snd q)
+  let !insides = computePolygonInternals $ psHole spec
+  let S2 minX minY maxX maxY = psBoundingBox spec
+  let bounds = ((minX, minY), (maxX, maxY))
+  let !validSegments = A.listArray bounds
+        [ computePolygonVisibility (psHole spec) (V2 x y)
+        | x <- [minX..maxX], y <- [minY..maxY]
+        ]
+  let validTargets (V2 x y)
+        | A.inRange bounds (x, y) = validSegments A.! (x, y)
+        | otherwise = R2.empty
+  let numVs = length $ psOriginalVertices spec
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
-          [ (j, admDelta) -- asc list (!)
-          | (j, dist) <- mapMaybe (neighborOf i) es
-          , let !admDelta = S.toAscList . S.fromList $ stretchAnnulus eps dist
+          [ (j, admDelta)
+          | (j, dist) <- IPM.neighbors (psEdges spec) i
+          , let !admDelta = admissibleRing (psEpsilon spec) dist
           ]
-    addNode circ Full $ \trigger old intersected new -> if old `isZSubset` intersected
+    addNode circ Full $ \trigger old intersected new -> do
+      if old `isZSubset` intersected
       then pure ()
       else case new of
         Full -> pure () -- unreachable
         Finite new' -> do
           forM_ neighbors $ \(j, admDelta) -> do
-            let !admissible = S.fromList
-                  [other | pos <- S.toList new', delta <- admDelta, let !other = pos .+. delta, isValidSegment pos other]
+            let !admissible = R2.unions
+                  [ R2.shift pos admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
             trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
   pure circ
-  where
-    neighborOf i (j, k, d)
-      | i == j = Just (k, d)
-      | i == k = Just (j, d)
-      | otherwise = Nothing
 
-iterateCircuit :: Ord a => CircuitState (ZSet a) -> ([a] -> IO ()) -> IO ()
+iterateCircuit :: CircuitState ZSet -> ([V2] -> IO ()) -> IO ()
 iterateCircuit circ cb = go circ
   where
     go circ = do
@@ -190,20 +179,19 @@ iterateCircuit circ cb = go circ
       --putStrLn $ "Circuit stopped, bottom=" <> show res
       unless res $ do
         !nodes <- IM.toList <$> viewNodes circ
-        --putStrLn $ "Node sizes: " <> show [S.size s | (_, Finite s) <- nodes]
+        --putStrLn $ "Node sizes: " <> show [R2.size s | (_, Finite s) <- nodes]
         case mapMaybe isUnresolved nodes of
           [] -> cb $ getSingleton . snd <$> nodes
           unresolved -> do
-            let (!i, !locs) = minimumBy (comparing $ S.size . snd) unresolved
+            let (!i, !locs) = minimumBy (comparing $ R2.size . snd) unresolved
             --putStrLn $ "{ Forking in " <> show (S.size locs) <> " ways"
             --putStrLn $ "{ Fixing " <> show i
-            experiment_ circ locs $ \circ loc -> do
-              triggerNode circ i (Finite $ S.singleton loc)
+            experiment_ circ (R2.toList locs) $ \circ loc -> do
+              triggerNode circ i (Finite $ R2.singleton loc)
               --putStrLn $ "Assuming " <> show i <> " -> " <> show loc
               go circ
             --putStrLn $ "} Fixing " <> show i
             --putStrLn "}"
-    isUnresolved (i, Finite s) | S.size s > 1 = Just (i, s)
+    isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
-    getSingleton (Finite s) | Just m <- S.lookupMin s = m
-    getSingleton _ = error "getSingleton Full/empty"
+    getSingleton (Finite s) = R2.findAny s
