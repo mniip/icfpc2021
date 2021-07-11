@@ -184,6 +184,10 @@ onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = do
       , viewPortTranslate = viewPortTranslate vp P.+ (1 / newScale P.* coords) P.- (1 / oldScale P.* coords)
       }
   pure world
+onEvent (EventKey (MouseButton RightButton) Down _ coords) world = do
+  cursor <- getMousePoint world coords
+  pure world { wDragging = Just cursor }
+onEvent (EventKey (MouseButton RightButton) Up _ _) world = pure world { wDragging = Nothing }
 onEvent (EventKey (SpecialKey KeyEsc) Down _ _) world = exitSuccess
 onEvent (EventKey (Char 's') Down _ _) world = do
   BSL.writeFile (wSaveFile world) $ encodePose Pose
