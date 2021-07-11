@@ -101,19 +101,19 @@ fillTriangleQ !a !b !c = IM.fromAscList $ if signedAreaQ (mid ~-~ bottom) (top ~
   then [(y, RLE.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [qCeil by .. qFloor my]] <>
        [(y, RLE.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
   else [(y, RLE.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [qCeil by .. qFloor my]] <>
-       [(y, RLE.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [qCeil my + 1 .. qFloor ty]]
+       [(y, RLE.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
   where
     [!bottom@(Q2 _ by), !mid@(Q2 _ my), !top@(Q2 _ ty)] = sortBy (comparing $ \(Q2 _ y) -> y) [a, b, c]
 
     -- by => ay
     segMin (Q2 ax ay) (Q2 bx by) !y
       | ay == by = qCeil $ min ax bx
-      | otherwise = qCeil $ bx + (by - y % 1) * (ax - bx) / (by - ay)
+      | otherwise = qCeil $ bx + (by - toInteger y % 1) * (ax - bx) / (by - ay)
 
     -- by => ay
     segMax (Q2 ax ay) (Q2 bx by) !y
       | ay == by = qFloor $ max ax bx
-      | otherwise = qFloor $ bx + (by - y % 1) * (ax - bx) / (by - ay)
+      | otherwise = qFloor $ bx + (by - toInteger y % 1) * (ax - bx) / (by - ay)
 
 -- signed angle from a to b is in [0, pi)
 angle0ToPiExcl :: V2 -> V2 -> Bool
@@ -122,10 +122,9 @@ angle0ToPiExcl a b = (signedArea a b, a `dot` b) >= (0, 0)
 data Obstruction = ObstrFull | ObstrCW | ObstrCCW
   deriving stock (Eq, Ord, Show)
 
---computePolygonVisibility :: Polygon -> V2 -> PolygonInternals
-computePolygonVisibility (Polygon vs) org = star
-{-IM.map RLE.fromSeq $
-  IM.unionsWith RLE.union [fillTriangleQ (v2ToQ2 org) a b | (a, b) <- cycPairs star]-}
+computePolygonVisibility :: Polygon -> V2 -> PolygonInternals
+computePolygonVisibility (Polygon vs) org = IM.map RLE.fromSeq $
+  IM.unionsWith RLE.union [fillTriangleQ (v2ToQ2 1 org) a b | (a, b) <- cycPairs star]
   where
     vertices = sortBy (comparing angle) $ filter (/= org) $ pVertex <$> vs
 
@@ -135,10 +134,10 @@ computePolygonVisibility (Polygon vs) org = star
         | let !prev = angle $ pVertex $ pPrevVertex pv
         , let !next = angle $ pVertex $ pNextVertex pv
         -> if next <= prev
-           then v2ToQ2 org : concatMap castRay (filter (\v -> angle v >= next && angle v <= prev) vertices)
+           then v2ToQ2 1 org : concatMap castRay (filter (\v -> angle v >= next && angle v <= prev) vertices)
            else let (xs, rs) = span (\v -> angle v <= prev) vertices
                     ys = dropWhile (\v -> angle v < next) rs
-                in v2ToQ2 org : concatMap castRay (ys ++ xs)
+                in v2ToQ2 1 org : concatMap castRay (ys ++ xs)
 
     between a b x = if a <= b then a <= x && x <= b else b <= x || x <= a
 
@@ -154,7 +153,7 @@ computePolygonVisibility (Polygon vs) org = star
     castRay targ
       | otherwise = collect Nothing Nothing Nothing $ mapMaybe (rayIntersection targ) vs
       where
-        collect !cw !here !ccw [] = (v2ToQ2 org ~+~) <$> catMaybes [cw, here, ccw]
+        collect !cw !here !ccw [] = (v2ToQ2 1 org ~+~) <$> catMaybes [cw, here, ccw]
         collect !cw !here !ccw ((ObstrFull, q):os) = collect (upd q cw) (upd q here) (upd q ccw) os
         collect !cw !here !ccw ((ObstrCW, q):os) = collect (upd q cw) here ccw os
         collect !cw !here !ccw ((ObstrCCW, q):os) = collect cw here (upd q ccw) os
@@ -164,16 +163,16 @@ computePolygonVisibility (Polygon vs) org = star
     rayIntersection targ pv
       | signedArea (a .-. org) dir == 0 && adist >= 0 -- hit a vertex
       = case (angle0ToPiExcl dir (a .-. c), angle0ToPiExcl (a .-. b) dir) of
-        (True, True) -> Just (ObstrFull, v2ToQ2 $ a .-. org)
-        (True, False) | adist > 0 -> Just (ObstrCW, v2ToQ2 $ a .-. org)
-        (False, True) | adist > 0 -> Just (ObstrCCW, v2ToQ2 $ a .-. org)
+        (True, True) -> Just (ObstrFull, v2ToQ2 1 $ a .-. org)
+        (True, False) | adist > 0 -> Just (ObstrCW, v2ToQ2 1 $ a .-. org)
+        (False, True) | adist > 0 -> Just (ObstrCCW, v2ToQ2 1 $ a .-. org)
         _ -> Nothing
       | not $ separatesStrictly (S2V2 org targ) a b = Nothing -- implies det /= 0
       -- else hit edge
       | signedArea dir (b .-. a) <= 0 = Nothing -- hit it from behind
-      | otherwise = case signedArea (a .-. org) (b .-. org) .*. dir of
-        d@(V2 x y) | productSign det (d `dot` dir) /= LT -> Just $ (ObstrFull, Q2 (x % det) (y % det))
-                   | otherwise -> Nothing
+      | let d = signedArea (a .-. org) (b .-. org) .*. dir
+      , productSign det (d `dot` dir) /= LT = Just $ (ObstrFull, v2ToQ2 det d)
+      | otherwise = Nothing
       where
         !a = pVertex pv
         !adist = (a .-. org) `dot` dir

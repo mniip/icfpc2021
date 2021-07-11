@@ -6,6 +6,7 @@ import System.Environment
 import System.Exit
 import Data.IORef
 import Data.List
+import qualified Data.IntMap.Strict as IM
 import Graphics.Gloss hiding (Point)
 import Graphics.Gloss.Data.ViewPort
 import qualified Graphics.Gloss.Data.Point.Arithmetic as P
@@ -24,6 +25,7 @@ import ICFPC.Triangulate
 import qualified ICFPC.Vector as V
 import ICFPC.Rational
 import ICFPC.Polygon hiding (Polygon)
+import qualified ICFPC.RLE as RLE
 
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
@@ -338,18 +340,19 @@ holePicture xs = Pictures $
 
 cursorPicture :: Point -> Picture
 cursorPicture coords = case fromIntegerPoint coords of
-  (x, y) -> Color blue $ Translate x y $ ThickCircle 0.25 0.5
+  (x, y) -> Pictures
+    [ Color blue $ Translate x y $ ThickCircle 0.25 0.5
+    , Color white $ Translate x y $ Scale 0.02 0.02 $ Text $ show coords
+    ]
 
 viewPicture :: Bool -> Polygon -> Point -> Picture
 viewPicture False _ _ = Blank
-viewPicture True bs coords = case fromIntegerPoint coords of
-  (x, y) -> Pictures $
-      [ Pictures [ Color (withAlpha 0.5 yellow) $ Polygon [(x, y), q2ToF q1, q2ToF q2]
-                 , Color magenta $ Line [q2ToF q1, q2ToF q2]
-                 ]
-      | (q1, q2) <- cycPairs $ computePolygonVisibility (mkPolyCCW $ mkPolygon $ V.packV2 <$> bs) (V.packV2 coords)
-      ]
-  where q2ToF (Q2 x y) = (fromIntegral (numerator x) / fromIntegral (denominator x), fromIntegral (numerator y) / fromIntegral (denominator y))
+viewPicture True bs coords = Color (withAlpha 0.5 yellow) $ Pictures $
+    [ Polygon [(x - 0.5, y - 0.5), (x + 0.5, y - 0.5), (x + 0.5, y + 0.5), (x - 0.5, y + 0.5), (x - 0.5, y - 0.5)]
+    | (iy, s) <- IM.toList $ computePolygonVisibility (mkPolyCCW $ mkPolygon $ V.packV2 <$> bs) (V.packV2 coords)
+    , ix <- RLE.toList $ RLE.toSeq s
+    , let (!x, !y) = fromIntegerPoint (ix, iy)
+    ]
 
 fromIntegerPoint :: Num a => Point -> (a, a)
 fromIntegerPoint = fromIntegral *** fromIntegral
