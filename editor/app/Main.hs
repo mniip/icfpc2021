@@ -50,6 +50,9 @@ data World = World
   , wTriangulationElems :: Int
   , wView :: Bool
   , wSpring :: Bool
+  , wEdgesToHoleEdges :: [[Point]] -- has size of wEdges
+  , wShowCloseEdges :: Bool
+  , wHideCloseEdgesNotUnderMouse :: Bool
   }
 
 data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
@@ -115,6 +118,9 @@ main = do
       , wTriangulationElems = -1
       , wView = False
       , wSpring = False
+      , wEdgesToHoleEdges = calculateCloseEdges (prEpsilon problem) edges (cyclePairs hole)
+      , wShowCloseEdges = False
+      , wHideCloseEdgesNotUnderMouse = False
       }
     worldPicture
     onEvent
@@ -225,8 +231,10 @@ onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode           = 
 onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation  = not (wShowTriangulation world) }
 onEvent (EventKey (Char '>') Up _ _) world = pure world { wTriangulationElems = min ((wTriangulationElems world) + 1) (length $ wTriangulation world)}
 onEvent (EventKey (Char '<') Up _ _) world = pure world { wTriangulationElems = max ((wTriangulationElems world) - 1) (-1)}
-onEvent (EventKey (Char 'v') Up _ _) world = pure world { wView = not (wView world) }
-onEvent (EventKey (Char 'r') Up _ _) world = pure world { wSpring = not (wSpring world) }
+onEvent (EventKey (Char 'v') Up _ _) world = pure world { wView           = not (wView world) }
+onEvent (EventKey (Char 'r') Up _ _) world = pure world { wSpring         = not (wSpring world) }
+onEvent (EventKey (Char 'c') Up _ _) world = pure world { wShowCloseEdges = not (wShowCloseEdges world) }
+onEvent (EventKey (Char 'x') Up _ _) world = pure world { wHideCloseEdgesNotUnderMouse = not (wHideCloseEdgesNotUnderMouse world) }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -246,7 +254,7 @@ worldPicture world = pure $ Pictures $
   , cursorPicture $ wMouseCoords world
   , viewPicture (wView world) (wHole world) (wMouseCoords world)
   , Color white $ scorePicture (wGrid world) (valid (wEpsilon world) (wHole world) (wEdges world) (wVertices world)) (dislikes (wHole world) (wVertices world))
-  ] ++ circles ++ holeTriangulation ++ map showBonus (wBonuses world)
+  ] ++ circles ++ holeTriangulation ++ map showBonus (wBonuses world) ++ similarEdges
   where
     showBoundary s (Just _) | S.size s == 1 = Just (S.findMin s)
     showBoundary _ _ = Nothing
@@ -263,6 +271,8 @@ worldPicture world = pure $ Pictures $
                                       WallHack -> orange
                                       SuperFlex -> cyan
                       in Color (withAlpha 0.5 color) $ Translate x y $ ThickCircle 1 2
+    edgesToHoles = if wHideCloseEdgesNotUnderMouse world then map (filter (\p -> dist p (wMouseCoords world) < 100)) (wEdgesToHoleEdges world) else wEdgesToHoleEdges world
+    similarEdges = if wShowCloseEdges world then [closeEdgesPicture (edgesMiddlePoints (wEdges world) (wVertices world)) edgesToHoles] else []
 
 validShort :: World -> [Point] -> (Bool, Bool)
 validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
@@ -349,6 +359,12 @@ viewPicture True bs coords = Color (withAlpha 0.5 yellow) $ Pictures $
     , let (x1, x2, y) = (fromIntegral ix1, fromIntegral ix2, fromIntegral iy)
     ]
 
+closeDistEdgesColor = magenta
+closeEdgesPicture :: [Point] -> [[Point]] -> Picture
+closeEdgesPicture edges hole_edges = Pictures $ map (\(s, e) -> Color closeDistEdgesColor $ Line $ fromIntegerPointList [s, e]) arrows
+  where
+    arrows = concatMap (\(start, ends) -> map (\end -> (start, end)) ends) $ zip edges hole_edges
+
 fromIntegerPoint :: Num a => Point -> (a, a)
 fromIntegerPoint = fromIntegral *** fromIntegral
 
@@ -408,3 +424,14 @@ applyMoverBfs mover (all, new) result_acc world = if S.size all == length result
   where
     movedPoints = mover (all, new) result_acc
     (inside_ok, dist_ok) = validShort world movedPoints
+
+edgesMiddlePoints :: [(Int, Int, Dist)] -> [Point] -> [Point]
+edgesMiddlePoints edges verts = map (\(i, j, _) -> middlePoint (verts !! i) (verts !! j)) edges
+
+middlePoint :: Point -> Point -> Point
+middlePoint (p1x, p1y) (p2x, p2y) = ((p1x + p2x) `div` 2, (p1y + p2y) `div` 2)
+
+calculateCloseEdges :: Epsilon -> [(Int, Int, Dist)] -> [(Point, Point)] -> [[Point]]
+calculateCloseEdges e edges hole_edges = map (\(_, _, d) -> getMiddles d) edges
+  where
+    getMiddles d = map (\(p, q) -> middlePoint p q) $ filter (\s -> canStretch e d s == EQ) hole_edges
