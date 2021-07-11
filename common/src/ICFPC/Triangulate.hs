@@ -9,32 +9,36 @@ triangulate poly_init = helper poly_init []
   where
     helper :: [V2] -> [(V2, V2, V2)] -> [(V2, V2, V2)]
     helper [v1, v2, v3] acc = (v1, v2, v3):acc
-    helper poly acc = helper (delete ear poly) ((prev, ear, next):acc)
+    helper poly acc = case findEarResult of
+        Nothing -> acc
+        Just _  -> helper (delete ear poly) ((prev, ear, next):acc)
       where
         Polygon vertices = mkPolygon poly
-        Just (prev, ear, next) = find isEar $ map vertexToTriple vertices
+        findEarResult = find isEar $ map vertexToTriple vertices
+        Just (prev, ear, next) = findEarResult
         vertexToTriple :: PolyVertex -> (V2, V2, V2)
         vertexToTriple (PolyVertex v prev next) = (pVertex prev, v, pVertex next)
 
         isEar :: (V2, V2, V2) -> Bool
-        isEar (prev, cur, next) = onTheRight (prev, next) cur && not (any (triangleContainsPt (prev, cur, next)) (filter (\v -> v /= prev && v /= cur && v /= next) poly))
-
+        isEar (prev, cur, next) = onTheRight (prev, next) cur && not (any (triangleContainsPt (prev, next, cur)) (filter (\v -> v /= prev && v /= cur && v /= next) poly))
 
 crossProduct :: V2 -> V2 -> Int
-crossProduct (V2 ux uy) (V2 vx vy) =  ux * vy - uy * vx
+crossProduct (V2 ux uy) (V2 vx vy) = ux * vy - uy * vx
 
 -- https://neerc.ifmo.ru/wiki/index.php?title=Предикат_"левый_поворот"
 onTheRight :: (V2, V2) -> V2 -> Bool
 onTheRight (p1, p2) p = crossProduct (p .-. p1) (p2 .-. p1) > 0
 
--- https://mathworld.wolfram.com/TriangleInterior.html
 triangleContainsPt :: (V2, V2, V2) -> V2 -> Bool
-triangleContainsPt (v0, v1, v2) v = a >= 0 && b >= 0 && a + b <= 1
+triangleContainsPt (v1, v2, v3) pt = not (has_neg && has_pos)
   where
-    det :: V2 -> V2 -> Float
-    det u v = fromIntegral $ crossProduct u v
-    a = (det v v2 - det v0 v2) / det v1 v2
-    b = -(det v v1 - det v0 v1) / det v1 v2
+    sign :: V2 -> V2 -> V2 -> Int
+    sign (V2 p1x p1y) (V2 p2x p2y) (V2 p3x p3y) = (p1x - p3x) * (p2y - p3y) - (p2x - p3x) * (p1y - p3y)
+    d1 = sign pt v1 v2
+    d2 = sign pt v2 v3
+    d3 = sign pt v3 v1
+    has_neg = d1 < 0 || d2 < 0 || d3 < 0
+    has_pos = d1 > 0 || d2 > 0 || d3 > 0
 
 remove :: Polygon -> PolyVertex -> Polygon
 remove (Polygon verts) vert = Polygon $ map relink $ filter (\v -> pVertex v /= pVertex vert) verts

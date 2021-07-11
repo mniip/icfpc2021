@@ -39,6 +39,7 @@ data World = World
   , wChains :: [(Int, Int, Dist)]
   , wShowTriangulation :: Bool
   , wTriangulation :: [(V.V2, V.V2, V.V2)]
+  , wTriangulationElems :: Int
   }
 
 data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
@@ -100,6 +101,7 @@ main = do
       , wChains = calcChains edges vertices
       , wShowTriangulation = False
       , wTriangulation = triangulate (map (\(x, y) -> V.V2 x y) hole)
+      , wTriangulationElems = -1
       }
     worldPicture
     onEvent
@@ -191,10 +193,12 @@ onEvent (EventKey (Char 'f') Down _ coord) world = do
 onEvent (EventKey (Char '1') Down _ coord) world = do
   let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world)
   pure world { wVertices = newVertices }
-onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple        = not (wHideSimple world) }
-onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes = not (wVisualizeDislikes world) }
-onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode          = nextDrag (wDragMode world) }
-onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation = not (wShowTriangulation world) }
+onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple         = not (wHideSimple world) }
+onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes  = not (wVisualizeDislikes world) }
+onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode           = nextDrag (wDragMode world) }
+onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation  = not (wShowTriangulation world) }
+onEvent (EventKey (Char '>') Up _ _) world = pure world { wTriangulationElems = min ((wTriangulationElems world) + 1) (length $ wTriangulation world)}
+onEvent (EventKey (Char '<') Up _ _) world = pure world { wTriangulationElems = max ((wTriangulationElems world) - 1) (-1)}
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -221,7 +225,8 @@ worldPicture world = pure $ Pictures $
     filterHide = if wHideSimple world then filter (\(u, v, d) -> not $ isEdgeToSimple (wEdges world) (u, v))
                  else id
     circles = if wVisualizeDislikes world then [visualizeDislikesPicture (wHole world) (wVertices world)] else []
-    holeTriangulation = if wShowTriangulation world then [triangulationPicture (wTriangulation world)] else []
+    holeTriangulation = if wShowTriangulation world then [triangulationPicture (triangulationTail $ wTriangulation world)] else []
+    triangulationTail tr = if wTriangulationElems world == -1 then tr else drop (length tr - wTriangulationElems world) tr
 
 validShort :: World -> [Point] -> (Bool, Bool)
 validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
