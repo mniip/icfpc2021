@@ -161,11 +161,23 @@ boundingBox ps = ((left, down), (right, up))
           down = minimum $ map snd ps
           up = maximum $ map snd ps
 
+intersectBBoxes :: (Point, Point) -> (Point, Point) -> (Point, Point)
+intersectBBoxes ((left, down), (right, up)) ((left', down'), (right', up')) =
+    ((max left left', max down down'), (min right right', min up up'))
+
+-- Given epsilon and a point with original distance,
+-- return a bounding box of the region within the stretching distance
+pointBBox :: Epsilon -> (Point, Dist) -> (Point, Point)
+pointBBox eps (p, d) = (p .-. v, p .+. v)
+    where (_, maxl) = stretchInterval eps d
+          horr = 1 + isqrt maxl
+          v = (horr, horr)
+
 -- Given a polygon, epsilon, a list of points with distances,
 -- return all points inside the polygon which satisfy annula constraints
 allowedPositions :: Polygon -> Epsilon -> [(Point, Dist)] -> [Point]
 allowedPositions poly eps edges = insidePolyAndAnnula
-    where ((left, down), (right, up)) = boundingBox poly
+    where ((left, down), (right, up)) = foldl' intersectBBoxes (boundingBox poly) (map (pointBBox eps) edges)
           points = [(x, y) | x <- [left..right], y <- [down..up]]
           goodEdge (q, d) p = canStretch eps d (q, p) == EQ
           insideAnnula = foldl (\a e -> filter (goodEdge e) a) points edges
