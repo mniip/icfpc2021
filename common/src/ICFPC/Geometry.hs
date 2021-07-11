@@ -6,6 +6,8 @@ import GHC.Exts
 import Debug.Trace (traceShow)
 import Data.Function (on)
 
+import qualified Data.IntMap as IM
+
 type Point = (Int, Int)
 
 {-# INLINE (.+.) #-}
@@ -71,6 +73,7 @@ cyclePairs xs = foldr (\x f y z -> (y, x) : f x z) (\y z -> [(y, z)]) (tail xs) 
 
 -- Check that a point is inside a polygon
 pointInPolygon :: Polygon -> Point -> Bool
+pointInPolygon [] _ = True -- Counterintuitively, we consider an empty polygon to be infinite
 pointInPolygon ps q@(qx, qy) = any (pointOnSegment q) (cyclePairs ps) || -- If q is on boundary, it's "inside"
                                foldl' edge False (cyclePairs ps)
     where edge f (a, b)
@@ -156,6 +159,7 @@ stretchAnnulus eps d = rightUpper ++
           reflY = map (\(x, y) -> (x, -y))
 
 boundingBox :: Polygon -> (Point, Point)
+boundingBox [] = ((-1000000, -1000000), (1000000, 1000000))
 boundingBox ps = ((left, down), (right, up))
     where left = minimum $ map fst ps
           right = maximum $ map fst ps
@@ -214,10 +218,12 @@ totallyImprove eps is xs bs = go (dislikes bs xs) xs
 
 -- Move a point away from the center of mass
 putPointAway :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe [Point]
-putPointAway eps is xs bs i = if null coords then Nothing else Just . replace $ maximumBy (compare `on` (dist mass)) coords
+putPointAway eps is xs bs i = if null coords 
+                              then Nothing
+                              else Just . replace $ maximumBy (compare `on` (\p -> sum $ map (isqrt . dist p) xs)) coords
     where len = length xs
           mass = (sum (map fst xs) `div` len, sum (map snd xs) `div` len)
-          coords = allowedPositions bs (2*eps) jss
+          coords = allowedPositions [] (2*eps) jss
           jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] ++ [(xs !! j, d) | (j, i', d) <- is, i' == i]
           replace p = let (before, after) = splitAt i xs in before ++ p:tail after
 
@@ -230,6 +236,7 @@ putPointsAway eps is xs bs = foldl go xs $ zip [0..] xs
 vdiv (x,y) l = ((x+1) `quot` l, (y+1) `quot` l)
 vmul (x,y) l = (x*l, y*l)
 
+{-
 adjustPoint :: Epsilon -> Dist -> Point -> Point -> Point
 adjustPoint eps d p q =
     let qp = q .-. p
@@ -239,9 +246,28 @@ adjustPoint eps d p q =
            LT -> p .-. (qp `vdiv` (1+len))
            GT -> p .+. (qp `vdiv` (1+len))
 
--- Stretch or contract edges
 adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
 adjustPoints eps is xs = zipWith go [0..] xs
     where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
           go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
+          -}
+
+-- Stretch or contract edges
+adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+adjustPoints eps is xs poly = map snd . IM.toList $ foldl go ps is
+    where ps = IM.fromList $ zip [0..] xs
+          go :: IM.IntMap Point -> (Int, Int, Dist) -> IM.IntMap Point
+          go ys (i, j, d) =
+              let p = ys IM.! i
+                  q = ys IM.! j
+                  qp = q .-. p
+                  len = 1 + ((2*(isqrt $ dist q p)) `div` 3)
+                  maybeInsert k r r' mp | r `elem` poly || r' `elem` poly = mp
+                                        | otherwise = IM.insert k r' mp
+              in case canStretch eps d (p, q) of
+                     EQ -> ys
+                     LT -> maybeInsert i p (p .-. (qp `vdiv` len)) .
+                           maybeInsert j q (q .+. (qp `vdiv` len)) $ ys
+                     GT -> maybeInsert i p (p .+. (qp `vdiv` len)) .
+                           maybeInsert j q (q .-. (qp `vdiv` len)) $ ys
 

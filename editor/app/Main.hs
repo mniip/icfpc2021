@@ -49,6 +49,7 @@ data World = World
   , wTriangulation :: [(V.V2, V.V2, V.V2)]
   , wTriangulationElems :: Int
   , wView :: Bool
+  , wSpring :: Bool
   }
 
 data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
@@ -113,6 +114,7 @@ main = do
       , wTriangulation = triangulate (mkPolygon $ V.packV2 <$> hole)
       , wTriangulationElems = -1
       , wView = False
+      , wSpring = False
       }
     worldPicture
     onEvent
@@ -121,7 +123,10 @@ main = do
 onEvent :: Event -> World -> IO World
 onEvent (EventMotion coords) world = do
   newCoords <- getMousePoint world coords
-  let world' = world { wMouseCoords = newCoords }
+  let newVertices = if wSpring world
+                    then adjustPoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
+                    else wVertices world
+      world' = world { wMouseCoords = newCoords, wVertices = newVertices }
   case wDragging world' of
     Nothing -> case wSelectionRect world' of
       Nothing -> pure world'
@@ -202,7 +207,7 @@ onEvent (EventKey (Char 'f') Down _ coord) world = do
   let newVertices = foldl' (\xs i -> withNth i flipping xs) (wVertices world) $ S.toList $ wSelection world
   pure world { wVertices = newVertices }
 onEvent (EventKey (Char '1') Down _ coord) world = do
-  let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world)
+  let newVertices = adjustPoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
   pure world { wVertices = newVertices }
 onEvent (EventKey (Char '2') Down _ coord) world = do
   let newVertices = improvePoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
@@ -217,6 +222,7 @@ onEvent (EventKey (Char 't') Up _ _) world = pure world { wShowTriangulation  = 
 onEvent (EventKey (Char '>') Up _ _) world = pure world { wTriangulationElems = min ((wTriangulationElems world) + 1) (length $ wTriangulation world)}
 onEvent (EventKey (Char '<') Up _ _) world = pure world { wTriangulationElems = max ((wTriangulationElems world) - 1) (-1)}
 onEvent (EventKey (Char 'v') Up _ _) world = pure world { wView = not (wView world) }
+onEvent (EventKey (Char 'r') Up _ _) world = pure world { wSpring = not (wSpring world) }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point

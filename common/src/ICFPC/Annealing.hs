@@ -122,12 +122,30 @@ randomMutation gen eps poly es vs = do
       lnbrs = length nbrs
   i <- uniformRM (0, lnbrs-1) gen
   pure $ IM.insert v (nbrs !! i) vs
-  {-
-  dir <- uniformRM (0, 7) gen
-  let dir' = if dir < 4 then dir else dir + 1
-  let delta@(!_, !_) = (dir' `div` 3 - 1, dir' `mod` 3 - 1)
-  pure $ IM.adjust (.+. delta) v vs
-  -}
+
+-- Try sending an edge to a polygon side
+randomEdgeMutation :: IOGenM StdGen -> Epsilon -> Polygon -> Edges -> Vertices -> IO Vertices
+randomEdgeMutation gen eps poly es vs = do
+  let esList = IPM.toList es
+  k <- uniformRM (0, length esList - 1) gen
+  let (i, j, d) = esList !! k -- a random edge
+      polygonSides = cyclePairs poly
+      hosts = filter ((==EQ) . canStretch eps d) polygonSides
+  if null hosts
+  then return vs
+  else do
+      s <- uniformRM (0, length hosts - 1) gen
+      let h = hosts !! s
+      return . IM.insert i (fst h) $ IM.insert j (snd h) vs
+
+-- Try sending a point to a polygon vertex
+randomPointMutation :: IOGenM StdGen -> Epsilon -> Polygon -> Edges -> Vertices -> IO Vertices
+randomPointMutation gen eps poly es vs = do
+  k <- uniformRM (0, length poly - 1) gen
+  let v = poly !! k
+      vlen = IM.size vs
+  i <- uniformRM (0, vlen-1) gen
+  return $ IM.insert i v vs
 
 randomInit :: IOGenM StdGen -> Polygon -> Int -> IO [Pair Int]
 randomInit gen poly numv = replicateM numv randomVertex
@@ -152,7 +170,10 @@ pickNeighbor eps bound es gen k temp vs = do
   let is = IPM.toList es
       xs = map snd $ IM.toAscList vs
       blowUp = mkVertices $ putPointsAway eps is xs bound
-      adjusted = mkVertices $ adjustPoints eps is xs
-  vss <- ([adjusted,blowUp,vs] ++) <$> replicateM k (randomMutation gen eps bound es vs)
+      adjusted = mkVertices $ adjustPoints eps is xs []
+  annula <- replicateM k (randomMutation gen eps bound es vs)
+  sides <- replicateM k (randomEdgeMutation gen eps bound es vs)
+  points <- replicateM k (randomPointMutation gen eps bound es vs)
+  let vss = [adjusted, {- blowUp, -} vs] ++ annula ++ sides ++ points
   -- boltzmann distribution
   weightedChoice gen ((\e -> exp (-e / temp)) . energy eps bound es) vss
