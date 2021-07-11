@@ -152,12 +152,12 @@ vertexCircuit !spec = do
   let !insides = computePolygonInternals $ psHole spec
   let S2 minX minY maxX maxY = psBoundingBox spec
   let bounds = ((minX, minY), (maxX, maxY))
-  let !validSegments = A.listArray bounds
-        [ computePolygonVisibility (psHole spec) (V2 x y)
+  let !validDeltas = A.listArray bounds
+        [ R2.shift (V2 (-x) (-y)) $ computePolygonVisibility (psHole spec) (V2 x y)
         | x <- [minX..maxX], y <- [minY..maxY]
         ]
   let validTargets (V2 x y)
-        | A.inRange bounds (x, y) = validSegments A.! (x, y)
+        | A.inRange bounds (x, y) = validDeltas A.! (x, y)
         | otherwise = R2.empty
   let numVs = length $ psOriginalVertices spec
   forM_ [0 .. numVs - 1] $ \i -> do
@@ -175,10 +175,10 @@ vertexCircuit !spec = do
           forM_ neighbors $ \(j, admDelta) -> do
             when (R2.size new' < 1000) $ do
               let !admissible = R2.unions
-                    [ R2.shift pos admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
+                    [ R2.shift pos $ admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
               trigger j $ Finite admissible
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
-  pure ((`R2.member` insides), \(S2V2 a b) -> b `R2.member` validTargets a, circ)
+  pure ((`R2.member` insides), \(S2V2 a b) -> (b .-. a) `R2.member` validTargets a, circ)
 
 iterateCircuit :: CircuitState ZSet -> ([V2] -> IO ()) -> IO ()
 iterateCircuit circ cb = go circ
