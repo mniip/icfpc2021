@@ -105,6 +105,9 @@ data BonusUse
   { buSourceProblem :: ProblemId
   , buBrokenLeg :: Pair Idx
   }
+  | WallHackUse
+  { buSourceProblem :: ProblemId
+  }
   deriving stock (Eq, Ord, Show)
 
 instance ToJSON BonusUse where
@@ -117,6 +120,10 @@ instance ToJSON BonusUse where
     , "problem" .= buSourceProblem
     , "edge" .= buBrokenLeg
     ]
+  toJSON WallHackUse{..} = object
+    [ "bonus" .= WallHack
+    , "problem" .= buSourceProblem
+    ]
 
 instance FromJSON BonusUse where
   parseJSON = withObject "BonusUse" $ \obj -> obj .: "bonus" >>= \case
@@ -125,6 +132,8 @@ instance FromJSON BonusUse where
     BreakALeg -> BreakALegUse
       <$> obj .: "problem"
       <*> explicitParseField parseJSONPair obj "edge"
+    WallHack -> WallHackUse
+      <$> obj .: "problem"
 
 data Pose = Pose
   { poseVertices :: [Pair Coord]

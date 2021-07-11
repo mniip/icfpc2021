@@ -11,9 +11,17 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
 import qualified Data.Array as A
+import Control.Exception
 import Control.Concurrent.Async
+import Control.Concurrent.MVar
 
-import ICFPC.Geometry
+import ICFPC.Geometry (stretchAnnulus)
+import ICFPC.Polygon
+import ICFPC.Vector
+import ICFPC.Problem
+import qualified ICFPC.RLE as R
+import qualified ICFPC.RLE2D as R2
+import qualified ICFPC.IntPairMap as IPM
 
 class Monoid a => Nodeable a where
   bottom :: a
@@ -127,43 +135,27 @@ isZSubset _ Full = True
 isZSubset Full _ = False
 isZSubset (Finite s1) (Finite s2) = s1 `S.isSubsetOf` s2
 
-type RLE = IM.IntMap Int
+admissibleRing :: Epsilon -> Dist -> R2.RLE2D
+admissibleRing eps d = R2.fromList $ map packV2 $ stretchAnnulus eps d
 
-makeRLE :: Int -> [Bool] -> RLE
-makeRLE n = goOff n IM.empty
-  where
-    goOff !n !m [] = m
-    goOff !n !m (False:xs) = goOff (n + 1) m xs
-    goOff !n !m (True:xs) = goOn n (n + 1) m xs
-    goOn !s !n !m [] = IM.insert s n m
-    goOn !s !n !m (True:xs) = goOn s (n + 1) m xs
-    goOn !s !n !m (False:xs) = goOff (n + 1) (IM.insert s n m) xs
-
-indexRLE :: RLE -> Int -> Bool
-indexRLE m n = case IM.lookupLE n m of
-  Nothing -> False
-  Just (_, k) -> n < k
-
-vertexCircuit :: Epsilon -> Polygon -> [(Int, Int, Dist)] -> Int -> IO (CircuitState (ZSet Point))
-vertexCircuit eps bound es numVs = do
+vertexCircuit :: ProblemSpec -> IO (CircuitState (ZSet V2))
+vertexCircuit !spec = do
   circ <- newCircuitState
-  let bounds@((!minX, !minY), (!maxX, !maxY)) = boundingBox bound
-  let !insides = S.fromList [(x, y) | x <- [minX..maxX], y <- [minY..maxY], pointInPolygon bound (x, y)]
-  let !validSegments = -- lazy/memoized
-          A.listArray ((minX, minY), (maxX, maxY))
-            [ A.listArray (minX, maxX)
-              [ row
-              | x2 <- [minX..maxX]
-              , let !row = makeRLE minY $ [segmentInPolygon bound ((x1, y1), (x2, y2)) | y2 <- [minY..maxY]]
-              ]
-            | x1 <- [minX..maxX], y1 <- [minY..maxY]
-            ]
-  let isValidSegment p q = A.inRange bounds p && A.inRange bounds q && indexRLE (validSegments A.! p A.! fst q) (snd q)
+  let !insides = computePolygonInternals $ psHole spec
+  let S2 minX minY maxX maxY = psBoundingBox spec
+  let bounds = ((minX, minY), (maxX, maxY))
+  let !validSegments = A.listArray bounds
+        [ computePolygonVisibility (psHole spec) (V2 x y)
+        | x <- [minX..maxX], y <- [minY..maxY]
+        ]
+  let isValidSegment (V2 x1 y1) v2@(V2 x2 y2)
+        = A.inRange bounds (x1, y1) && A.inRange bounds (x2, y2) && v2 `R2.member` (validSegments A.! (x1, y1))
+  let numVs = length $ psOriginalVertices spec
   forM_ [0 .. numVs - 1] $ \i -> do
     let !neighbors =
-          [ (j, admDelta) -- asc list (!)
-          | (j, dist) <- mapMaybe (neighborOf i) es
-          , let !admDelta = S.toAscList . S.fromList $ stretchAnnulus eps dist
+          [ (j, admDelta)
+          | (j, dist) <- IPM.neighbors (psEdges spec) i
+          , let !admDelta = admissibleRing (psEpsilon spec) dist
           ]
     addNode circ Full $ \trigger old intersected new -> if old `isZSubset` intersected
       then pure ()
@@ -172,9 +164,14 @@ vertexCircuit eps bound es numVs = do
         Finite new' -> do
           forM_ neighbors $ \(j, admDelta) -> do
             let !admissible = S.fromList
-                  [other | pos <- S.toList new', delta <- admDelta, let !other = pos .+. delta, isValidSegment pos other]
+                  [ other
+                  | pos <- S.toList new'
+                  , delta <- R2.toList admDelta
+                  , let !other = pos .+. delta
+                  , isValidSegment pos other
+                  ]
             trigger j $ Finite admissible
-  forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
+  forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite $ S.fromList . R2.toList $ insides
   pure circ
   where
     neighborOf i (j, k, d)

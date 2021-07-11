@@ -6,36 +6,39 @@ import qualified Data.IntMap as IM
 -- run length encoded set of ints
 -- a pair (a, b) in the sequence encodes an interval [a, b)
 -- b must be greater than a, but smaller than the next a in the list
-newtype RLESeq = RLESeq [(Int, Int)]
+newtype RLE = RLE [(Int, Int)]
   deriving stock (Eq, Ord, Show)
 
-empty :: RLESeq
-empty = RLESeq []
+empty :: RLE
+empty = RLE []
 
 -- encode an interval [a, b)
-run :: Int -> Int -> RLESeq
+run :: Int -> Int -> RLE
 run a b
-  | a < b = RLESeq [(a, b)]
+  | a < b = RLE [(a, b)]
   | otherwise = empty
 
-singleton :: Int -> RLESeq
-singleton a = RLESeq [(a, a + 1)]
+singleton :: Int -> RLE
+singleton a = RLE [(a, a + 1)]
 
-toList :: RLESeq -> [Int]
-toList (RLESeq is) = [x | (a, b) <- is, x <- [a..b-1]]
+toList :: RLE -> [Int]
+toList (RLE is) = [x | (a, b) <- is, x <- [a..b-1]]
+
+toRuns :: RLE -> [(Int, Int)]
+toRuns (RLE is) = is
 
 -- strictly ascending
-fromAscList :: [Int] -> RLESeq
+fromAscList :: [Int] -> RLE
 fromAscList [] = empty
-fromAscList (x:xs) = RLESeq $ go x x xs
+fromAscList (x:xs) = RLE $ go x x xs
   where
     go !a !b [] = [(a, b + 1)]
     go !a !b (!c:xs)
       | c == b + 1 = go a (b + 1) xs
       | otherwise = (a, b + 1):go c c xs
 
-union :: RLESeq -> RLESeq -> RLESeq
-union (RLESeq is) (RLESeq js) = RLESeq $ fromFlips $ merge00 (toFlips is) (toFlips js)
+union :: RLE -> RLE -> RLE
+union (RLE is) (RLE js) = RLE $ fromFlips $ merge00 (toFlips is) (toFlips js)
   where
     toFlips = concatMap (\(a, b) -> [a, b])
     fromFlips [] = []
@@ -66,17 +69,11 @@ union (RLESeq is) (RLESeq js) = RLESeq $ fromFlips $ merge00 (toFlips is) (toFli
       EQ -> i:merge00 is js
       GT -> merge10 (i:is) js
 
--- a tree version of the above sequence, for efficient member lookup
-newtype RLESet = RLESet (IM.IntMap Int)
-  deriving (Eq, Ord, Show)
-
-fromSeq :: RLESeq -> RLESet
-fromSeq (RLESeq is) = RLESet $ IM.fromList is
-
-toSeq :: RLESet -> RLESeq
-toSeq (RLESet m) = RLESeq $ IM.toList m
-
-member :: Int -> RLESet -> Bool
-member x (RLESet m) = case IM.lookupLE x m of
-  Nothing -> False
-  Just (_, b) -> x < b
+member :: Int -> RLE -> Bool
+member x (RLE is) = go is
+  where
+    go [] = False
+    go ((a, b):is)
+      | a > x = False
+      | x < b = True
+      | otherwise = go is

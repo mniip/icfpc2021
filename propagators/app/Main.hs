@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, ViewPatterns #-}
 module Main where
 
 import Control.Monad
@@ -12,43 +12,41 @@ import Control.Concurrent.Async
 
 import ICFPC.Propagators
 import ICFPC.JSON
-import ICFPC.Geometry
+import ICFPC.Polygon
+import ICFPC.Problem
+import ICFPC.Vector
 
 main :: IO ()
 main = do
-  [probFile, solFile] <- getArgs
-  problem <- decodeProblem <$> BSL.readFile probFile
-  let boundary = prHole problem
-  let !vertices = figVertices (prFigure problem)
-  let !edges = [(u, v, distSeg (vertices !! u, vertices !! v)) | (u, v) <- figEdges $ prFigure problem]
-  let !eps = prEpsilon problem
-  let !numVs = length vertices
+  [read -> probNumber, solFile] <- getArgs
+  spec <- readProblem probNumber
 
   bestRef <- newIORef Nothing
 
-  circ <- vertexCircuit eps boundary edges numVs
+  circ <- vertexCircuit spec
   runCircuit circ
   putStrLn $ solFile <> ": Init"
   let
-    report vs =  do
-      if isValid eps boundary (map (\(u, v, _) -> (u, v)) edges) vertices vs
-      then do
-        let !score = dislikes boundary vs
-        isBest <- atomicModifyIORef' bestRef $ \mBest -> if maybe True (> score) mBest then (Just score, True) else (mBest, False)
-        when isBest $ do
-          putStrLn $ solFile <> ": New best: " <> show score
-          BSL.writeFile solFile $ encodePose $ Pose vs []
-      else putStrLn $ solFile <> ": Invalid (!?) " <> show vs
-  forConcurrently_ boundary $ \p ->
+    report vs = case checkSolution spec $ Pose (unpackV2 <$> vs) [] of
+        Left str -> putStrLn $ "Invalid solution: " <> str <> " : " <> show vs
+        Right score -> do
+          isBest <- atomicModifyIORef' bestRef $ \mBest -> if maybe True (> score) mBest then (Just score, True) else (mBest, False)
+          when isBest $ do
+            putStrLn $ solFile <> ": New best: " <> show score
+            BSL.writeFile solFile $ encodePose $ Pose (unpackV2 <$> vs) []
+    numVs = IM.size $ psOriginalVertices spec
+
+  forConcurrently_ (polygonVertices $ psHole spec) $ \p ->
     forM_ [0..numVs-1] $ \i -> do
       circ' <- cloneCircuit circ
       triggerNode circ' i (Finite $ S.singleton p)
       iterateCircuit circ' report
   putStrLn $ solFile <> ": Finished corner placements"
+
   circ' <- cloneCircuit circ
   masks <- viewNodes circ'
   forM_ (IM.toList masks) $ \(i, s) -> case s of
     Full -> pure () -- unreachable
-    Finite s -> triggerNode circ' i $ Finite $ foldl' (flip S.delete) s boundary
+    Finite s -> triggerNode circ' i $ Finite $ foldl' (flip S.delete) s (polygonVertices $ psHole spec)
   iterateCircuit circ' report
   putStrLn $ solFile <> ": Finished search"

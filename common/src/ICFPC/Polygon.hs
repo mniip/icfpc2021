@@ -13,7 +13,8 @@ import Data.List
 import ICFPC.DbList
 import ICFPC.Vector
 import ICFPC.Rational
-import qualified ICFPC.RLE as RLE
+import qualified ICFPC.RLE as R
+import qualified ICFPC.RLE2D as R2
 
 data PolyVertex = PolyVertex
   { pVertex :: {-# UNPACK #-} !V2
@@ -31,6 +32,9 @@ pPrevSegment pv = S2V2 (pVertex $ pPrevVertex pv) (pVertex pv)
 
 -- assumed no self-intersections
 newtype Polygon = Polygon [PolyVertex]
+
+polygonVertices :: Polygon -> [V2]
+polygonVertices (Polygon ps) = pVertex <$> ps
 
 instance Show Polygon where
   showsPrec d (Polygon ps) = showParen (d > 9) $ showString "mkPolygon " . showsPrec 10 (pVertex <$> ps)
@@ -52,13 +56,6 @@ polyBoundingBox :: Polygon -> S2
 polyBoundingBox (Polygon (map pVertex -> (v:vs))) = foldl' minMax (S2V2 v v) vs
   where
     minMax (S2 x1 y1 x2 y2) (V2 x y) = S2 (min x x1) (min y y1) (max x x2) (max y y2)
-
-type PolygonInternals = IM.IntMap RLE.RLESet
-
-inPolygonInternals :: V2 -> PolygonInternals -> Bool
-inPolygonInternals (V2 x y) m = case IM.lookup y m of
-  Nothing -> False
-  Just s -> x `RLE.member` s
 
 pointInTriangle :: (V2, V2, V2) -> V2 -> Bool
 pointInTriangle (v1, v2, v3) pt =
@@ -83,9 +80,8 @@ triangulate (mkPolyCCW -> Polygon ps) = go (pVertex <$> ps) []
 
     onTheRight (p1, p2) p = signedArea (p .-. p1) (p2 .-. p1) > 0
 
-computePolygonInternals :: Polygon -> PolygonInternals
-computePolygonInternals poly = IM.map RLE.fromSeq $
-  IM.unionsWith RLE.union [fillTriangle a b c | (a, b, c) <- triangulate poly]
+computePolygonInternals :: Polygon -> R2.RLE2D
+computePolygonInternals poly = R2.unions [fillTriangle a b c | (a, b, c) <- triangulate poly]
 
 -- map from y to run of x's
 --    T         T
@@ -95,12 +91,12 @@ computePolygonInternals poly = IM.map RLE.fromSeq $
 -- y  B         B
 -- ^
 -- +>x
-fillTriangle :: V2 -> V2 -> V2 -> IM.IntMap RLE.RLESeq
-fillTriangle !a !b !c = IM.fromAscList $ if signedArea (mid .-. bottom) (top .-. bottom) >= 0
-  then [(y, RLE.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [by..my]] <> {- 1 -}
-       [(y, RLE.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [my+1..ty]]
-  else [(y, RLE.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [by..my]] <> {- 2 -}
-       [(y, RLE.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [my+1..ty]]
+fillTriangle :: V2 -> V2 -> V2 -> R2.RLE2D
+fillTriangle !a !b !c = R2.fromAscList $ if signedArea (mid .-. bottom) (top .-. bottom) >= 0
+  then [(y, R.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [by..my]] <> {- 1 -}
+       [(y, R.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [my+1..ty]]
+  else [(y, R.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [by..my]] <> {- 2 -}
+       [(y, R.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [my+1..ty]]
   where
     [!bottom@(V2 _ by), !mid@(V2 _ my), !top@(V2 _ ty)] = sortBy (comparing $ \(V2 _ y) -> y) [a, b, c]
 
@@ -117,12 +113,12 @@ fillTriangle !a !b !c = IM.fromAscList $ if signedArea (mid .-. bottom) (top .-.
     floorDiv p q = p `div` q
     ceilDiv p q = -((-p) `div` q)
 
-fillTriangleQ :: Q2 -> Q2 -> Q2 -> IM.IntMap RLE.RLESeq
-fillTriangleQ !a !b !c = IM.fromAscList $ if signedAreaQ (mid ~-~ bottom) (top ~-~ bottom) >= 0
-  then [(y, RLE.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [qCeil by .. qFloor my]] <>
-       [(y, RLE.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
-  else [(y, RLE.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [qCeil by .. qFloor my]] <>
-       [(y, RLE.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
+fillTriangleQ :: Q2 -> Q2 -> Q2 -> R2.RLE2D
+fillTriangleQ !a !b !c = R2.fromAscList $ if signedAreaQ (mid ~-~ bottom) (top ~-~ bottom) >= 0
+  then [(y, R.run (segMin bottom top y) (segMax bottom mid y + 1)) | y <- [qCeil by .. qFloor my]] <>
+       [(y, R.run (segMin bottom top y) (segMax mid top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
+  else [(y, R.run (segMin bottom mid y) (segMax bottom top y + 1)) | y <- [qCeil by .. qFloor my]] <>
+       [(y, R.run (segMin mid top y) (segMax bottom top y + 1)) | y <- [qFloor my + 1 .. qFloor ty]]
   where
     [!bottom@(Q2 _ by), !mid@(Q2 _ my), !top@(Q2 _ ty)] = sortBy (comparing $ \(Q2 _ y) -> y) [a, b, c]
 
@@ -143,9 +139,8 @@ angle0ToPiExcl a b = (signedArea a b, a `dot` b) >= (0, 0)
 data Obstruction = ObstrFull | ObstrCW | ObstrCCW
   deriving stock (Eq, Ord, Show)
 
-computePolygonVisibility :: Polygon -> V2 -> PolygonInternals
-computePolygonVisibility (Polygon vs) org = IM.map RLE.fromSeq $
-  IM.unionsWith RLE.union [fillTriangleQ (v2ToQ2 1 org) a b | (a, b) <- cycPairs star]
+computePolygonVisibility :: Polygon -> V2 -> R2.RLE2D
+computePolygonVisibility (Polygon vs) org = R2.unions [fillTriangleQ (v2ToQ2 1 org) a b | (a, b) <- cycPairs star]
   where
     vertices = sortBy (comparing angle) $ filter (/= org) $ pVertex <$> vs
 

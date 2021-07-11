@@ -25,7 +25,8 @@ import ICFPC.Geometry
 import qualified ICFPC.Vector as V
 import ICFPC.Rational
 import ICFPC.Polygon hiding (Polygon)
-import qualified ICFPC.RLE as RLE
+import qualified ICFPC.RLE as R
+import qualified ICFPC.RLE2D as R2
 
 data World = World
   { wModifyViewPort :: (ViewPort -> IO ViewPort) -> IO ()
@@ -367,10 +368,9 @@ cursorPicture coords = case fromIntegerPoint coords of
 viewPicture :: Bool -> Polygon -> Point -> Picture
 viewPicture False _ _ = Blank
 viewPicture True bs coords = Color (withAlpha 0.5 yellow) $ Pictures $
-    [ Polygon [(x - 0.5, y - 0.5), (x + 0.5, y - 0.5), (x + 0.5, y + 0.5), (x - 0.5, y + 0.5), (x - 0.5, y - 0.5)]
-    | (iy, s) <- IM.toList $ computePolygonVisibility (mkPolyCCW $ mkPolygon $ V.packV2 <$> bs) (V.packV2 coords)
-    , ix <- RLE.toList $ RLE.toSeq s
-    , let (!x, !y) = fromIntegerPoint (ix, iy)
+    [ Polygon [(x1 - 0.5, y - 0.5), (x2 - 0.5, y - 0.5), (x2 - 0.5, y + 0.5), (x1 - 0.5, y + 0.5), (x1 - 0.5, y - 0.5)]
+    | (ix1, ix2, iy) <- R2.toRuns $ computePolygonVisibility (mkPolyCCW $ mkPolygon $ V.packV2 <$> bs) (V.packV2 coords)
+    , let (x1, x2, y) = (fromIntegral ix1, fromIntegral ix2, fromIntegral iy)
     ]
 
 fromIntegerPoint :: Num a => Point -> (a, a)
