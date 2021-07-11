@@ -12,9 +12,11 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
 import qualified Data.Array as A
+import qualified Data.Array.IO as A
 import Control.Exception
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
+import System.Random
 
 import ICFPC.Geometry (stretchAnnulus)
 import ICFPC.Polygon
@@ -193,15 +195,30 @@ iterateCircuit circ cb = go circ
           [] -> cb $ getSingleton . snd <$> nodes
           unresolved -> do
             let (!i, !locs) = minimumBy (comparing $ R2.size . snd) unresolved
-            putStr $ "{" <> show (R2.size locs)
-            hFlush stdout
+            --putStr $ "{" <> show (R2.size locs)
+            --hFlush stdout
             --putStrLn $ "{ Fixing " <> show i
-            experiment_ circ (R2.toList locs) $ \circ loc -> do
+            locs' <- shuffle $ R2.toList locs
+            experiment_ circ locs' $ \circ loc -> do
               triggerNode circ i (Finite $ R2.singleton loc)
               --putStrLn $ "Assuming " <> show i <> " -> " <> show loc
               go circ
             --putStrLn $ "} Fixing " <> show i
-            putStr "}"
+            --putStr "}"
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
     getSingleton (Finite s) = R2.findAny s
+
+shuffle :: [a] -> IO [a]
+shuffle xs = do
+        ar <- newArray n xs
+        forM [1..n] $ \i -> do
+            j <- randomRIO (i,n)
+            vi <- A.readArray ar i
+            vj <- A.readArray ar j
+            A.writeArray ar j vi
+            return vj
+  where
+    n = length xs
+    newArray :: Int -> [a] -> IO (A.IOArray Int a)
+    newArray n xs = A.newListArray (1,n) xs
