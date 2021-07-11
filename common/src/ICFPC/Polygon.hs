@@ -40,8 +40,7 @@ mkPolygon vs = Polygon $ mkCycDbList (\prev v next -> PolyVertex v prev next) vs
 
 -- returns 2x the signed area of the polygon
 polySignedArea2x :: Polygon -> Int
-polySignedArea2x (Polygon ((pVertex -> a):(pVertex -> b):vs)) = sum [signedArea ba (pVertex v .-. a) | v <- vs]
-  where !ba = b .-. a
+polySignedArea2x (Polygon ((pVertex -> a):vs)) = sum [signedArea (a .-. pVertex v) (pVertex (pPrevVertex v) .-. a) | v <- vs]
 polySignedArea2x _ = 0
 
 mkPolyCCW :: Polygon -> Polygon
