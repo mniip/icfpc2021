@@ -60,11 +60,32 @@ inPolygonInternals (V2 x y) m = case IM.lookup y m of
   Nothing -> False
   Just s -> x `RLE.member` s
 
+pointInTriangle :: (V2, V2, V2) -> V2 -> Bool
+pointInTriangle (v1, v2, v3) pt =
+  (d1 >= 0 && d2 >= 0 && d3 >= 0) ||
+  (d1 <= 0 && d2 <= 0 && d3 <= 0)
+  where
+    !d1 = signedArea (v1 .-. pt) (v2 .-. pt)
+    !d2 = signedArea (v2 .-. pt) (v3 .-. pt)
+    !d3 = signedArea (v3 .-. pt) (v1 .-. pt)
+
+triangulate :: Polygon -> [(V2, V2, V2)]
+triangulate (mkPolyCCW -> Polygon ps) = go (pVertex <$> ps) []
+  where
+    go :: [V2] -> [(V2, V2, V2)] -> [(V2, V2, V2)]
+    go [v1, v2, v3] !acc = (v1, v2, v3):acc
+    go poly !acc = case find isEar $ cycTriples poly of
+        Nothing -> acc
+        Just (prev, ear, next) -> go (delete ear poly) ((prev, ear, next):acc)
+      where
+        isEar (prev, cur, next) = onTheRight (prev, next) cur &&
+          not (any (pointInTriangle (prev, next, cur)) $ poly \\ [prev, cur, next])
+
+    onTheRight (p1, p2) p = signedArea (p .-. p1) (p2 .-. p1) > 0
+
 computePolygonInternals :: Polygon -> PolygonInternals
 computePolygonInternals poly = IM.map RLE.fromSeq $
-  IM.unionsWith RLE.union [fillTriangle a b c | (a, b, c) <- triangulation poly]
-  where
-    triangulation = error "not implemented"
+  IM.unionsWith RLE.union [fillTriangle a b c | (a, b, c) <- triangulate poly]
 
 -- map from y to run of x's
 --    T         T

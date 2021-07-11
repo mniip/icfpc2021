@@ -22,7 +22,6 @@ import Data.Function (on)
 import ICFPC.DbList
 import ICFPC.JSON
 import ICFPC.Geometry
-import ICFPC.Triangulate
 import qualified ICFPC.Vector as V
 import ICFPC.Rational
 import ICFPC.Polygon hiding (Polygon)
@@ -110,7 +109,7 @@ main = do
       , wVisualizeDislikes = False
       , wChains = calcChains edges vertices
       , wShowTriangulation = False
-      , wTriangulation = triangulate (map (\(x, y) -> V.V2 x y) hole)
+      , wTriangulation = triangulate (mkPolygon $ V.packV2 <$> hole)
       , wTriangulationElems = -1
       , wView = False
       }

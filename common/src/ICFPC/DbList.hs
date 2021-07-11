@@ -18,3 +18,6 @@ mkCycDbList f (v:u:us) = let
 
 cycPairs :: [a] -> [(a, a)]
 cycPairs = mkCycDbList (\_ x ~(y, _) -> (x, y))
+
+cycTriples :: [a] -> [(a, a, a)]
+cycTriples = mkCycDbList (\_ x ~(y, z, _) -> (x, y, z))
