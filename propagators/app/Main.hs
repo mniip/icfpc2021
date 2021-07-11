@@ -16,6 +16,8 @@ import ICFPC.Polygon
 import ICFPC.Problem
 import ICFPC.Vector
 
+import qualified ICFPC.RLE2D as R2
+
 main :: IO ()
 main = do
   [read -> probNumber, solFile] <- getArgs
@@ -39,7 +41,7 @@ main = do
   forConcurrently_ (polygonVertices $ psHole spec) $ \p ->
     forM_ [0..numVs-1] $ \i -> do
       circ' <- cloneCircuit circ
-      triggerNode circ' i (Finite $ S.singleton p)
+      triggerNode circ' i (Finite $ R2.singleton p)
       iterateCircuit circ' report
   putStrLn $ solFile <> ": Finished corner placements"
 
@@ -47,6 +49,6 @@ main = do
   masks <- viewNodes circ'
   forM_ (IM.toList masks) $ \(i, s) -> case s of
     Full -> pure () -- unreachable
-    Finite s -> triggerNode circ' i $ Finite $ foldl' (flip S.delete) s (polygonVertices $ psHole spec)
+    Finite s -> triggerNode circ' i $ Finite $ foldl' (flip R2.delete) s (polygonVertices $ psHole spec)
   iterateCircuit circ' report
   putStrLn $ solFile <> ": Finished search"
