@@ -311,22 +311,21 @@ adjustPoints eps is xs = zipWith go [0..] xs
     where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
           go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
 
-
--- Move point to the best "green" location
-improvePoint :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe Point
+-- Move point to the best "green" location.
+-- Returns new figure
+improvePoint :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> Int -> Maybe [Point]
 improvePoint eps is xs bs i = if null variants then Nothing else Just . snd $ minimumBy (compare `on` fst) variants
     where coords = allowedPositions bs eps jss
-          jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] <> [(xs !! j, d) | (j, i', d) <- is, i' == i]
+          jss = [(xs !! j, d) | (i', j, d) <- is, i' == i] ++ [(xs !! j, d) | (j, i', d) <- is, i' == i]
           replace p = let (before, after) = splitAt i xs in before ++ p:tail after
-          variants = map (\p -> (dislikes bs (replace p), p)) coords
+          variants = filter (\(_, ys) -> fst (valid eps bs is ys)) $ map (\p -> (dislikes bs (replace p), replace p)) coords
 
 -- Improve all points in order
 improvePoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
-improvePoints eps is xs bs = go $ zip [0..] xs
-    where go [] = []
-          go ((i,p):pps) = case improvePoint eps is xs bs i of
-                             Nothing -> p : go pps
-                             Just p' -> p' : go pps
+improvePoints eps is xs bs = foldl go xs $ zip [0..] xs
+    where go ys (i,p) = case improvePoint eps is ys bs i of
+                             Nothing -> ys
+                             Just ys' -> ys'
 
 figurePicture :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> S.Set Int -> Bool -> Picture
 figurePicture eps is xs selected hideSimple = Pictures $
