@@ -19,7 +19,7 @@
 -- f - flip selected points horizontally around cursor
 -- 1 - try to shuffle points towards where their edges have correct lengths (spring mode)
 -- 2 - for each point find a location where most constraints are satisfied and move it there
--- 3 - repeat the above until we can't
+-- 3 - repel points away from the center of mass
 -- 4 - attract each vertex to a corner where the adjacent edges look like they match exactly (magnet mode)
 -- 5 - find sequences of boundary edges that match connected sequences of vertices in the pose
 -- h - hide edges of vertices that only have 2 edges (simple vertices)

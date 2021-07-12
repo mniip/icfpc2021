@@ -1,7 +1,8 @@
 {-# LANGUAGE BangPatterns, ViewPatterns #-}
 -- Rate a solution to a problem
 --
--- ./rate <problem.json> <solution.json>
+-- ./rate <problem number> <solution.json>
+-- The problem is assumed to be in ./problems/<problem number>.problem
 --
 -- If invalid, attempts to explain why. Doesn't support the Supeflex bonus.
 module Main where

@@ -1,7 +1,8 @@
 {-# LANGUAGE BangPatterns, ViewPatterns #-}
 -- A full search constraint solver using a propagator circuit for vertices and edges.
 --
--- ./propagate <problem.json> <solution.json> [border]
+-- ./propagate <problem number> <solution.json> [border]
+-- The problem is assumed to be in ./problems/<problem number>.problem
 -- The border flag reads vertices from the solution, and assumes those lying on the boundary to be fixed/known.
 --
 -- We use propagators to solve constraints on vertices' locations, and edge "orientations". We do a backtracking search
