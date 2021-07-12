@@ -127,7 +127,7 @@ main = do
       , wShowCloseEdges = False
       , wHideCloseEdgesNotUnderMouse = False
       , w_a_Pressed = False
-      , wHoleCircleRadius = 30
+      , wHoleCircleRadius = 2
       , w_z_Pressed = False
       }
     worldPicture

@@ -265,7 +265,7 @@ matchingSides eps is s = map (\(i, j, _) -> (i, j)) $ filter (\(i, j, d) -> canS
 longestChain :: Epsilon -> [(Int, Int, Dist)] -> Polygon -> [(Int, Int)]
 longestChain eps is poly = if null chainTree || null (head chainTree)
                            then []
-                           else unroll [head $ head chainTree] (tail chainTree)
+                           else maximumBy (compare `on` length) [unroll [h] (tail chainTree) | h <- head chainTree]
     where sides = cyclePairs poly
           chainTree = go [] sides
           go :: [[(Int, Int)]] -> [Segment] -> [[(Int, Int)]]
