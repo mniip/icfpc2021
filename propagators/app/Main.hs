@@ -22,6 +22,7 @@ import ICFPC.Polygon
 import ICFPC.Problem
 import ICFPC.Vector
 import ICFPC.Geometry (stretchAnnulus)
+import qualified ICFPC.RLE as R
 import qualified ICFPC.RLE2D as R2
 import qualified ICFPC.IntPairMap as IPM
 
@@ -166,7 +167,7 @@ main = do
 
   let
     report vs = do
-      let pose = Pose (unpackV2 . (vs IM.!) <$> IM.elems vMap) []
+      let pose = Pose (unpackV2 . (vs IM.!) <$> IM.keys vMap) []
       case checkSolutionWithCache vInPoly sInPoly spec pose of
         Left str -> say $ "Invalid solution: " <> str <> " : " <> show pose
         Right score -> do
@@ -181,13 +182,16 @@ main = do
   runCircuit circ
   say "Initialized circuit"
 
+  let !vIdxs = foldl' R.union R.empty $ R.singleton <$> IM.elems vMap
+  let !corners = R2.fromList $ polygonVertices $ psHole spec
+  let rank i v = if (i `R.member` vIdxs) && (v `R2.member` corners) then 0 else 1
+
   let nthread = 16
-  circLists <- distribute nthread <$> partitionCircuit nthread circ
+  circLists <- distribute nthread <$> partitionCircuit (\_ _ -> 0) nthread circ
   forConcurrently_ circLists $ \circList -> do
     say $ "Thread for " <> show (length circList) <> " branches"
-    forM_ circList $ \cic -> do
-      iterateCircuit circ report
-    say "Thread finished"
+    iterateCircuit rank circ report
+    say "Thread Done"
   say "Done"
   where
     distribute n xs = chunksOf chunk xs

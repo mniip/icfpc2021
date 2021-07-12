@@ -1,11 +1,13 @@
 {-# LANGUAGE BangPatterns, LambdaCase #-}
 module ICFPC.Propagators where
 
+import Control.Arrow
+import Data.Function
 import Data.Ord
 import Data.Maybe
 import Data.IORef
 import Data.Foldable
-import Data.List (sortBy)
+import Data.List (sortBy, groupBy)
 import qualified Data.IntMap.Strict as IM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -145,8 +147,8 @@ isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 zSize Full = -1
 zSize (Finite s) = R2.size s
 
-partitionCircuit :: Int ->  CircuitState ZSet -> IO [CircuitState ZSet]
-partitionCircuit k circ = do
+partitionCircuit :: (NodeIdx -> V2 -> Int) -> Int ->  CircuitState ZSet -> IO [CircuitState ZSet]
+partitionCircuit rank k circ = do
   runCircuit circ >>= \case
     True -> pure [circ]
     False -> do
@@ -156,25 +158,25 @@ partitionCircuit k circ = do
         unresolved -> do
           -- closest to k
           let (!i, !locs) = minimumBy (comparing $ abs . (k -) . R2.size .snd) unresolved
-          locs' <- shuffle $ R2.toList locs
-          experiment circ locs' $ \circ loc -> do
+          locs' <- traverse (shuffle . map snd) $ groupBy ((==) `on` fst) $ sortBy (comparing fst) $ map (rank i &&& id) $ R2.toList locs
+          experiment circ (concat locs') $ \circ loc -> do
             triggerNode circ i (Finite $ R2.singleton loc)
             pure circ
   where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
 
-iterateCircuit :: CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
-iterateCircuit circ cb = do
+iterateCircuit :: (NodeIdx -> V2 -> Int) -> CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
+iterateCircuit rank circ cb = do
   res <- runCircuit circ
   unless res $ do
     nodes <- viewNodes circ
     case mapMaybe isUnresolved $ IM.toList nodes of
       [] -> cb $ IM.map getSingleton nodes
       unresolved -> do
-        parts <- partitionCircuit 0 circ
+        parts <- partitionCircuit rank 0 circ
         forM_ parts $ \circ' -> do
-          iterateCircuit circ' cb
+          iterateCircuit rank circ' cb
   where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
