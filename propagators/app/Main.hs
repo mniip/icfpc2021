@@ -190,6 +190,7 @@ main = do
   let !prio = S.fromList [(i, v) | i <- IM.elems vMap, v <- polygonVertices $ psHole spec]
 
   let nthread = 16
+
   circLists <- distribute nthread <$> partitionCircuit S.empty nthread circ
   forConcurrently_ circLists $ \circList -> do
     say $ "Thread for " <> show (length circList) <> " branches"

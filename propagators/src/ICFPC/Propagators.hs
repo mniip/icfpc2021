@@ -148,7 +148,7 @@ isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 zSize Full = -1
 zSize (Finite s) = R2.size s
 
-partitionCircuit :: S.Set (NodeIdx, V2) -> Int ->  CircuitState ZSet -> IO [CircuitState ZSet]
+partitionCircuit :: S.Set (NodeIdx, V2) -> Int -> CircuitState ZSet -> IO [CircuitState ZSet]
 partitionCircuit prioChoices k circ = do
   runCircuit circ >>= \case
     True -> pure [circ]
@@ -161,14 +161,17 @@ partitionCircuit prioChoices k circ = do
           let (!i, !locs) = minimumBy (comparing rank) unresolved
           locs' <- shuffle $ R2.toList locs
           let (goods, bads) = partition (\v -> (i, v) `S.member` prioChoices) locs'
+          putStr $ "{" <> show (length goods) <> ":" <> show (length bads)
           experiment circ (goods ++ bads) $ \circ loc -> do
             triggerNode circ i (Finite $ R2.singleton loc)
             pure circ
   where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
-  
-    rank (i, rs) = - (toInteger $ 1 + (R2.size $ chs `R2.intersection` rs)^2) % (toInteger $ R2.size rs)
+
+    rank (i, rs)
+      | S.null prioChoices = let !s = R2.size rs in fromIntegral $ if s < k then k + 1000 - s else s - k
+      | otherwise = - (toInteger $ 1 + (R2.size $ chs `R2.intersection` rs)^2) % (toInteger $ R2.size rs)
       where chs = R2.fromList (map snd $ filter ((== i) . fst) $ S.toList prioChoices)
 
 iterateCircuit :: S.Set (NodeIdx, V2) -> CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
@@ -182,6 +185,7 @@ iterateCircuit prioChoices circ cb = do
         parts <- partitionCircuit prioChoices 0 circ
         forM_ parts $ \circ' -> do
           iterateCircuit prioChoices circ' cb
+        putStr "}"
   where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
