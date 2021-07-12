@@ -11,7 +11,6 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import qualified Data.Set as S
-import qualified Data.Array as A
 import qualified Data.Array.IO as A
 import Control.Exception
 import Control.Concurrent.Async
@@ -35,7 +34,7 @@ class Monoid a => Nodeable a where
 
 type NodeIdx = Int
 
-type Updater a = (NodeIdx -> a -> IO ()) -> a -> a -> a -> IO ()
+type Updater a = IM.IntMap a -> (NodeIdx -> a -> IO ()) -> a -> a -> a -> IO ()
 
 data CircuitState a = CircuitState
   { cNodeIdx :: IORef NodeIdx
@@ -94,7 +93,8 @@ runCircuit circ = do
             let trigger j y
                   | i == j = error "cyclic trigger"
                   | otherwise = modifyIORef' pendingRef $ IM.insertWith (<>) j y
-            liftIO $ (updaters IM.! i) trigger  x x' x''
+            states <- liftIO $ readIORef statesRef
+            liftIO $ (updaters IM.! i) states trigger x x' x''
         case result of
           Nothing -> pure True
           Just _ -> go
@@ -145,54 +145,17 @@ isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 zSize Full = -1
 zSize (Finite s) = R2.size s
 
-admissibleRing :: Epsilon -> Dist -> R2.RLE2D
-admissibleRing eps d = R2.fromList $ map packV2 $ stretchAnnulus eps d
-
-vertexCircuit :: ProblemSpec -> IO (V2 -> Bool, S2 -> Bool, CircuitState ZSet)
-vertexCircuit !spec = do
-  circ <- newCircuitState
-  let !insides = computePolygonInternals $ psHole spec
-  let S2 minX minY maxX maxY = psBoundingBox spec
-  let bounds = ((minX, minY), (maxX, maxY))
-  let !validDeltas = A.listArray bounds
-        [ R2.shift (V2 (-x) (-y)) $ computePolygonVisibility (psHole spec) (V2 x y)
-        | x <- [minX..maxX], y <- [minY..maxY]
-        ]
-  let validTargets (V2 x y)
-        | A.inRange bounds (x, y) = validDeltas A.! (x, y)
-        | otherwise = R2.empty
-  let numVs = length $ psOriginalVertices spec
-  forM_ [0 .. numVs - 1] $ \i -> do
-    let !neighbors =
-          [ (j, admDelta)
-          | (j, dist) <- IPM.neighbors (psEdges spec) i
-          , let !admDelta = admissibleRing (psEpsilon spec) dist
-          ]
-    addNode circ Full $ \trigger old intersected new -> do
-      if old `isZSubset` intersected
-      then pure ()
-      else case new of
-        Full -> pure () -- unreachable
-        Finite new' -> do
-          forM_ neighbors $ \(j, admDelta) -> do
-            when (R2.size new' < 1000) $ do
-              let !admissible = R2.unions
-                    [ R2.shift pos $ admDelta `R2.intersection` validTargets pos | pos <- R2.toList new' ]
-              trigger j $ Finite admissible
-  forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
-  pure ((`R2.member` insides), \(S2V2 a b) -> (b .-. a) `R2.member` validTargets a, circ)
-
-iterateCircuit :: CircuitState ZSet -> ([V2] -> IO ()) -> IO ()
+iterateCircuit :: CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
 iterateCircuit circ cb = go circ
   where
     go circ = do
       res <- runCircuit circ
       --putStrLn $ "Circuit stopped, bottom=" <> show res
       unless res $ do
-        !nodes <- IM.toList <$> viewNodes circ
+        !nodes <- viewNodes circ
         --putStrLn $ "Node sizes: " <> show [R2.size s | (_, Finite s) <- nodes]
-        case mapMaybe isUnresolved nodes of
-          [] -> cb $ getSingleton . snd <$> nodes
+        case mapMaybe isUnresolved $ IM.toList nodes of
+          [] -> cb $ IM.map getSingleton nodes
           unresolved -> do
             let (!i, !locs) = minimumBy (comparing $ R2.size . snd) unresolved
             --putStr $ "{" <> show (R2.size locs)

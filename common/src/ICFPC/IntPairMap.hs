@@ -28,3 +28,15 @@ neighbors (IntPairMap m) v =
 
 lookup :: Int -> Int -> IntPairMap a -> Maybe a
 lookup a b (IntPairMap m) = IM.lookup a m >>= IM.lookup b
+
+(!) :: IntPairMap a -> (Int, Int) -> a
+(!) (IntPairMap m) (a, b) = case IM.lookup a m of
+  Nothing -> error "First key not found"
+  Just m' -> case IM.lookup b m' of
+    Nothing -> error "Second key not found"
+    Just x -> x
+
+member :: (Int, Int) -> IntPairMap a -> Bool
+member (a, b) (IntPairMap m) = case IM.lookup a m of
+  Nothing -> False
+  Just m' -> b `IM.member` m'

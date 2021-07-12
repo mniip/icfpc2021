@@ -55,9 +55,15 @@ findAny (RLE2D m) = case head $ IM.toList m of
 delete :: V2 -> RLE2D -> RLE2D
 delete (V2 x y) (RLE2D m) = RLE2D $ IM.update (\s -> let s' = R.delete x s in if R.null s' then Nothing else Just s') y m
 
+-- add (x, y) to all points
 {-# INLINE shift #-}
 shift :: V2 -> RLE2D -> RLE2D
 shift (V2 x y) (RLE2D m) = RLE2D $ IM.mapKeysMonotonic (+ y) $ IM.map (R.shift x) m
+
+-- subtract all points from (x, y)
+{-# INLINE reflect #-}
+reflect :: V2 -> RLE2D -> RLE2D
+reflect (V2 x y) (RLE2D m) = RLE2D $ IM.mapKeys (y -) $ IM.map (R.reflect x) m
 
 consistency :: RLE2D -> ()
 consistency (RLE2D m) = IM.foldl' (\() s -> if R.null s then error "N" else R.consistency s) () m
