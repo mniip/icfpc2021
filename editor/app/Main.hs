@@ -275,7 +275,7 @@ worldPicture world = pure $ Pictures $
                                       WallHack -> orange
                                       SuperFlex -> cyan
                       in Color (withAlpha 0.5 color) $ Translate x y $ ThickCircle 1 2
-    rHoles = 10
+    rHoles = 30
     edgesToHoles = if wHideCloseEdgesNotUnderMouse world then map (filter (\p -> dist p (wMouseCoords world) < rHoles * rHoles)) (wEdgesToHoleEdges world) else wEdgesToHoleEdges world
     similarEdges = if wShowCloseEdges world then [closeEdgesPictureHighlight (edgesLines (wEdges world) (wVertices world)) edgesToHoles, holeCircles] else []
     holeCircles = Pictures $ map (\(p, q) -> let (x, y) = fromIntegerPoint (middlePoint p q) in Translate x y $ Circle (fromIntegral rHoles)) (cyclePairs (wHole world))
