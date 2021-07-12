@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, LambdaCase #-}
 module ICFPC.Propagators where
 
 import Data.Ord
@@ -122,7 +122,7 @@ experiment_ circ xs f = forM_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 experimentPar_ :: Foldable t => CircuitState a -> t b -> (CircuitState a -> b -> IO c) -> IO ()
 experimentPar_ circ xs f = forM_ xs (\x -> liftIO (cloneCircuit circ) >>= (`f` x))
 
-data ZSet = Full | Finite R2.RLE2D
+data ZSet = Full | Finite !R2.RLE2D
   deriving (Eq, Ord, Show)
 
 instance Semigroup ZSet where
@@ -145,29 +145,37 @@ isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 zSize Full = -1
 zSize (Finite s) = R2.size s
 
-iterateCircuit :: CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
-iterateCircuit circ cb = go circ
+partitionCircuit :: Int ->  CircuitState ZSet -> IO [CircuitState ZSet]
+partitionCircuit k circ = do
+  runCircuit circ >>= \case
+    True -> pure [circ]
+    False -> do
+      nodes <- viewNodes circ
+      case mapMaybe isUnresolved $ IM.toList nodes of
+        [] -> pure [circ]
+        unresolved -> do
+          -- closest to k
+          let (!i, !locs) = minimumBy (comparing $ abs . (k -) . R2.size .snd) unresolved
+          locs' <- shuffle $ R2.toList locs
+          experiment circ locs' $ \circ loc -> do
+            triggerNode circ i (Finite $ R2.singleton loc)
+            pure circ
   where
-    go circ = do
-      res <- runCircuit circ
-      --putStrLn $ "Circuit stopped, bottom=" <> show res
-      unless res $ do
-        !nodes <- viewNodes circ
-        --putStrLn $ "Node sizes: " <> show [R2.size s | (_, Finite s) <- nodes]
-        case mapMaybe isUnresolved $ IM.toList nodes of
-          [] -> cb $ IM.map getSingleton nodes
-          unresolved -> do
-            let (!i, !locs) = minimumBy (comparing $ R2.size . snd) unresolved
-            --putStr $ "{" <> show (R2.size locs)
-            --hFlush stdout
-            --putStrLn $ "{ Fixing " <> show i
-            locs' <- shuffle $ R2.toList locs
-            experiment_ circ locs' $ \circ loc -> do
-              triggerNode circ i (Finite $ R2.singleton loc)
-              --putStrLn $ "Assuming " <> show i <> " -> " <> show loc
-              go circ
-            --putStrLn $ "} Fixing " <> show i
-            --putStr "}"
+    isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
+    isUnresolved _ = Nothing
+
+iterateCircuit :: CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
+iterateCircuit circ cb = do
+  res <- runCircuit circ
+  unless res $ do
+    nodes <- viewNodes circ
+    case mapMaybe isUnresolved $ IM.toList nodes of
+      [] -> cb $ IM.map getSingleton nodes
+      unresolved -> do
+        parts <- partitionCircuit 0 circ
+        forM_ parts $ \circ' -> do
+          iterateCircuit circ' cb
+  where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
     getSingleton (Finite s) = R2.findAny s
