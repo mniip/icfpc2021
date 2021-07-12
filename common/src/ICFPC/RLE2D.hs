@@ -67,3 +67,7 @@ reflect (V2 x y) (RLE2D m) = RLE2D $ IM.mapKeys (y -) $ IM.map (R.reflect x) m
 
 consistency :: RLE2D -> ()
 consistency (RLE2D m) = IM.foldl' (\() s -> if R.null s then error "N" else R.consistency s) () m
+
+{-# INLINE null #-}
+null :: RLE2D -> Bool
+null (RLE2D m) = IM.null m

@@ -7,7 +7,7 @@ import Data.Ord
 import Data.Maybe
 import Data.IORef
 import Data.Foldable
-import Data.List (sortBy, groupBy)
+import Data.List (sortBy, groupBy, partition)
 import qualified Data.IntMap.Strict as IM
 import Control.Monad
 import Control.Monad.IO.Class
@@ -147,8 +147,8 @@ isZSubset (Finite s1) (Finite s2) = s1 `R2.isSubsetOf` s2
 zSize Full = -1
 zSize (Finite s) = R2.size s
 
-partitionCircuit :: (NodeIdx -> V2 -> Int) -> Int ->  CircuitState ZSet -> IO [CircuitState ZSet]
-partitionCircuit rank k circ = do
+partitionCircuit :: S.Set (NodeIdx, V2) -> Int ->  CircuitState ZSet -> IO [CircuitState ZSet]
+partitionCircuit prioChoices k circ = do
   runCircuit circ >>= \case
     True -> pure [circ]
     False -> do
@@ -157,26 +157,32 @@ partitionCircuit rank k circ = do
         [] -> pure [circ]
         unresolved -> do
           -- closest to k
-          let (!i, !locs) = minimumBy (comparing $ abs . (k -) . R2.size .snd) unresolved
-          locs' <- traverse (shuffle . map snd) $ groupBy ((==) `on` fst) $ sortBy (comparing fst) $ map (rank i &&& id) $ R2.toList locs
-          experiment circ (concat locs') $ \circ loc -> do
+          let (!i, !locs) = minimumBy (comparing rank) unresolved
+          locs' <- shuffle $ R2.toList locs
+          let (goods, bads) = partition (\v -> (i, v) `S.member` prioChoices) locs'
+          experiment circ (goods ++ bads) $ \circ loc -> do
+            when ((i, loc) `S.member` prioChoices) $ do
+              putStrLn $ "Prio choice " <> show i <> " -> " <> show loc
             triggerNode circ i (Finite $ R2.singleton loc)
             pure circ
   where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
 
-iterateCircuit :: (NodeIdx -> V2 -> Int) -> CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
-iterateCircuit rank circ cb = do
+    rank (i, rs) = (not $ R2.null (chs `R2.intersection` rs), R2.size rs)
+      where chs = R2.fromList (map snd $ filter ((== i) . fst) $ S.toList prioChoices)
+
+iterateCircuit :: S.Set (NodeIdx, V2) -> CircuitState ZSet -> (IM.IntMap V2 -> IO ()) -> IO ()
+iterateCircuit prioChoices circ cb = do
   res <- runCircuit circ
   unless res $ do
     nodes <- viewNodes circ
     case mapMaybe isUnresolved $ IM.toList nodes of
       [] -> cb $ IM.map getSingleton nodes
       unresolved -> do
-        parts <- partitionCircuit rank 0 circ
+        parts <- partitionCircuit prioChoices 0 circ
         forM_ parts $ \circ' -> do
-          iterateCircuit rank circ' cb
+          iterateCircuit prioChoices circ' cb
   where
     isUnresolved (i, Finite s) | R2.size s > 1 = Just (i, s)
     isUnresolved _ = Nothing
