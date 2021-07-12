@@ -296,7 +296,7 @@ worldPicture world = pure $ Pictures $
     rHoles = wHoleCircleRadius world
     edgesToHoles = if wHideCloseEdgesNotUnderMouse world then map (filter (\p -> dist p (wMouseCoords world) < rHoles * rHoles)) (wEdgesToHoleEdges world) else wEdgesToHoleEdges world
     similarEdges = if wShowCloseEdges world then [closeEdgesPictureHighlight (edgesLines (wEdges world) (wVertices world)) edgesToHoles, holeCircles] else []
-    holeCircles = Pictures $ map (\(p, q) -> let (x, y) = fromIntegerPoint (middlePoint p q) in Translate x y $ Circle (fromIntegral rHoles)) (cyclePairs (wHole world))
+    holeCircles = Pictures $ map (\(p, q) -> let (x, y) = fromIntegerPoint (middlePoint p q) in Color (greyN 0.5) $ Translate x y $ Circle (fromIntegral rHoles)) (cyclePairs (wHole world))
 
 validShort :: World -> [Point] -> (Bool, Bool)
 validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
