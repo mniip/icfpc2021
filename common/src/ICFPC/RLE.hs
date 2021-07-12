@@ -156,6 +156,13 @@ shift x = go
     go Stop = Stop
     go (Run a b is) = Run (a + x) (b + x) $ go is
 
+reflect :: Int -> RLE -> RLE
+reflect x = go Stop
+  where
+    !xp1 = x + 1
+    go !r Stop = r
+    go !r (Run a b is) = go (Run (xp1 - b) (xp1 - a) r) is
+
 consistency :: RLE -> ()
 consistency = go
   where
