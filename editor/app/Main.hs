@@ -275,8 +275,10 @@ worldPicture world = pure $ Pictures $
                                       WallHack -> orange
                                       SuperFlex -> cyan
                       in Color (withAlpha 0.5 color) $ Translate x y $ ThickCircle 1 2
-    edgesToHoles = if wHideCloseEdgesNotUnderMouse world then map (filter (\p -> dist p (wMouseCoords world) < 100)) (wEdgesToHoleEdges world) else wEdgesToHoleEdges world
-    similarEdges = if wShowCloseEdges world then [closeEdgesPicture (edgesMiddlePoints (wEdges world) (wVertices world)) edgesToHoles] else []
+    rHoles = 10
+    edgesToHoles = if wHideCloseEdgesNotUnderMouse world then map (filter (\p -> dist p (wMouseCoords world) < rHoles * rHoles)) (wEdgesToHoleEdges world) else wEdgesToHoleEdges world
+    similarEdges = if wShowCloseEdges world then [closeEdgesPictureHighlight (edgesLines (wEdges world) (wVertices world)) edgesToHoles, holeCircles] else []
+    holeCircles = Pictures $ map (\(p, q) -> let (x, y) = fromIntegerPoint (middlePoint p q) in Translate x y $ Circle (fromIntegral rHoles)) (cyclePairs (wHole world))
 
 validShort :: World -> [Point] -> (Bool, Bool)
 validShort world verts = valid (wEpsilon world) (wHole world) (wEdges world) verts
@@ -364,10 +366,10 @@ viewPicture True bs coords = Color (withAlpha 0.5 yellow) $ Pictures $
     ]
 
 closeDistEdgesColor = magenta
-closeEdgesPicture :: [Point] -> [[Point]] -> Picture
-closeEdgesPicture edges hole_edges = Pictures $ map (\(s, e) -> Color closeDistEdgesColor $ Line $ fromIntegerPointList [s, e]) arrows
+closeEdgesPictureHighlight :: [(Point, Point)] -> [[Point]] -> Picture
+closeEdgesPictureHighlight edges hole_edges = Pictures $ map (\(p1, p2) -> Color closeDistEdgesColor $ Line $ fromIntegerPointList [p1, p2]) lines
   where
-    arrows = concatMap (\(start, ends) -> map (\end -> (start, end)) ends) $ zip edges hole_edges
+    lines = map (\(e, hs) -> e) $ filter (\(_, hs) -> not (null hs)) $ zip edges hole_edges
 
 fromIntegerPoint :: Num a => Point -> (a, a)
 fromIntegerPoint = fromIntegral *** fromIntegral
@@ -431,6 +433,9 @@ applyMoverBfs mover (all, new) result_acc world = if S.size all == length result
 
 edgesMiddlePoints :: [(Int, Int, Dist)] -> [Point] -> [Point]
 edgesMiddlePoints edges verts = map (\(i, j, _) -> middlePoint (verts !! i) (verts !! j)) edges
+
+edgesLines :: [(Int, Int, Dist)] -> [Point] -> [(Point, Point)]
+edgesLines edges verts = map (\(i, j, _) -> (verts !! i, verts !! j)) edges
 
 middlePoint :: Point -> Point -> Point
 middlePoint (p1x, p1y) (p2x, p2y) = ((p1x + p2x) `div` 2, (p1y + p2y) `div` 2)
