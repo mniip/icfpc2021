@@ -1,4 +1,37 @@
 {-# LANGUAGE BangPatterns, TypeApplications, TupleSections #-}
+-- A visual problem/solution viewer/editor, using Gloss
+--
+-- ./edit <problem.json> <solution.json>
+--
+-- Displays a grid with the hole, pose, and bonuses
+-- Displays whether the pose is valid and score, and if not - why
+-- Stretched edges are highlighted in cyan, compressed in yellow
+--
+-- Scroll to zoom in or out (you can scroll in/out in different locations to move around)
+-- Pose vertices can be selected or dragged with LMB. Hold 'a' to add to the selection.
+-- RMB to drag without clicking exactly on the vertex.
+-- When dragging a single vertex, constraints on its position are displayed (greener - more constraints satisfied)
+--
+-- Miscellaneous keybindings:
+-- Esc - quit
+-- s - save solution
+-- q, e - rotate selected points around cursor
+-- f - flip selected points horizontally around cursor
+-- 1 - try to shuffle points towards where their edges have correct lengths (spring mode)
+-- 2 - for each point find a location where most constraints are satisfied and move it there
+-- 3 - repeat the above until we can't
+-- 4 - attract each vertex to a corner where the adjacent edges look like they match exactly (magnet mode)
+-- 5 - find sequences of boundary edges that match connected sequences of vertices in the pose
+-- h - hide edges of vertices that only have 2 edges (simple vertices)
+-- d - toggle showing where the dislikes come from: for each corner of the hole a circle to the nearest point of the pose
+-- g - toggle whether dragging will try to move nearby vertices to satisfy constraint (doesn't work very well)
+-- t - toggle showing a triangulation of the boundary (debug)
+-- <, > - adjust how many triangles are shown
+-- v - toggle showing which integer points are "visibile" from the cursor position - to where an edge can be drawn
+-- r - toggle continuously simulating spring mode (1)
+-- m - toggle continuously simulating magnet mode (4)
+-- c - toggle highlighting edges that will fit exactly in the boundary edges
+-- x - toggle 'c' mode for only the edge we're hovering over (adjust with 'z' + scroll)
 module Main where
 
 import Control.Exception
@@ -6,8 +39,6 @@ import System.Environment
 import System.Exit
 import Data.IORef
 import Data.List
-import qualified Data.IntMap.Strict as IM
-import Graphics.Gloss hiding (Point)
 import Graphics.Gloss.Data.ViewPort
 import qualified Graphics.Gloss.Data.Point.Arithmetic as P
 import Graphics.Gloss.Data.Picture hiding (Point)
@@ -16,16 +47,11 @@ import qualified Data.ByteString.Lazy as BSL
 import Control.Arrow
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
-import Data.Ratio
-import Data.Function (on)
 
-import ICFPC.DbList
 import ICFPC.JSON
 import ICFPC.Geometry
 import qualified ICFPC.Vector as V
-import ICFPC.Rational
 import ICFPC.Polygon hiding (Polygon)
-import qualified ICFPC.RLE as R
 import qualified ICFPC.RLE2D as R2
 
 data World = World

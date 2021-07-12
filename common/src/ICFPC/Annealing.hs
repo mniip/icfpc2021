@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies, BangPatterns #-}
+-- Utilities for simulated annealing
 module ICFPC.Annealing where
 
 import Control.Monad
@@ -12,10 +13,9 @@ import qualified ICFPC.IntPairMap as IPM
 
 type Edges = IPM.IntPairMap Int
 
-sp !x !y = (x, y)
-
 type Vertices = IM.IntMap (Int, Int)
 
+-- A yet another point datatype, so that energy calculations are a little bit faster
 data PointNative = Point {-# UNPACK #-} !Int !Int
 
 {-# INLINE toPointNative #-}
@@ -40,7 +40,7 @@ Point x1 y1 .--. Point x2 y2 = Point (x1 - x2) (y1 - y2)
 sideways :: PointNative -> PointNative
 sideways (Point x y) = Point (-y) x
 
--- minimal translation required to untangle the segments
+-- If two segments overlap, minimal translation required to untangle them
 overlapEnergy :: SegmentNative -> SegmentNative -> Double
 overlapEnergy (Segment a b) (Segment p q) =
   if pab * qab < 0 && apq * bpq < 0
@@ -55,6 +55,7 @@ overlapEnergy (Segment a b) (Segment p q) =
     !bpq = opq `dot` (b .--. p)
     lab = sqrt $ fromIntegral $ oab `dot` oab
 
+-- Distance from a point to a segment
 distanceEnergy :: PointNative -> SegmentNative -> Double
 distanceEnergy !p (Segment a b) =
   if t >= 0 && t <= 1
@@ -70,7 +71,9 @@ distanceEnergy !p (Segment a b) =
     bp = b .--. p
     lbp = sqrt $ fromIntegral $ bp `dot` bp
 
--- multiply the inequality |d(x)/d - 1| < ... through by sqrt(d)/2 so that it's roughly linear in x and y
+-- How "wrong" the edge length is.
+-- Multiply the inequality |d(x)/d - 1| < ... through by sqrt(d)/2 so that it's roughly linear in x and y.
+-- This makes edges of different length have comparable notions of wrongness
 lengthEnergy :: Epsilon -> Segment -> Dist -> Double
 lengthEnergy eps seg d =
   max 0.0 $ abs (fromIntegral d' / (sqrtD * 2) - sqrtD / 2) - fromIntegral eps * sqrtD / 2e6
@@ -78,6 +81,15 @@ lengthEnergy eps seg d =
     !d' = distSeg seg
     !sqrtD = sqrt $ fromIntegral d
 
+-- Compute the energy (lower is better) of a solution. Composed of:
+-- - Large penalty for any edges crossing the boundary (gradient towards making them not intersect)
+-- - Large penalty for any points outside the boundary (gradient towards closest edge)
+-- (this is unideal: an edge could lie outside with both endpoints on the boundary edges)
+-- - Medium penalty for any edges of incorrect length (gradient towards correct length)
+-- - Small penalty based on score
+--
+-- This prioritizes getting correct solutions over getting good solutions, but after correctness is attained, we
+-- still optimize the score, and correctness acts as a non-strict constraint.
 energy :: Epsilon -> Polygon -> Edges -> Vertices -> Double
 energy eps boundary es vs = boundaryEnergies + lengthEnergies / 10 + scoreEnergies / 100
   where
@@ -103,6 +115,7 @@ mkEdgesWeighted = IPM.fromList
 data Validity = Ok | NotOk
   deriving stock (Eq, Ord, Show)
 
+-- A yet another implementation of validity
 isValid :: Epsilon -> Polygon -> Edges -> Vertices -> Validity
 isValid eps boundary es vs = if boundaryValid && edgesValid then Ok else NotOk
   where
@@ -112,6 +125,7 @@ isValid eps boundary es vs = if boundaryValid && edgesValid then Ok else NotOk
 vertexNeighbors :: Int -> Edges -> Vertices -> [(Point, Dist)]
 vertexNeighbors v es vs = map (\(v', d) -> (vs IM.! v', d)) $ IPM.neighbors es v
 
+-- Randomly jiggle the vertices
 randomMutation :: IOGenM StdGen -> Epsilon -> Polygon -> Edges -> Vertices -> IO Vertices
 randomMutation gen eps poly es vs = do
   let (!maxI, _) = IM.findMax vs
@@ -158,6 +172,7 @@ randomInit gen poly numv = replicateM numv randomVertex
               i <- uniformRM (0, polyl-1) gen
               return $ poly !! i
 
+-- Pick a random value with the probability proportional to the return of the weight function
 weightedChoice :: IOGenM StdGen -> (a -> Double) -> [a] -> IO a
 weightedChoice gen weight xs = do
   let !totalWeight = sum weights
@@ -176,6 +191,7 @@ twoFold fun gen eps poly es vs = do
     vs'' <- fun gen eps poly es vs'
     return vs''
 
+-- Pick a random "neighboring" state
 pickNeighbor :: Epsilon -> Polygon -> Edges -> IOGenM StdGen -> Int -> Double -> Vertices -> IO Vertices
 pickNeighbor eps bound es gen k temp vs = do
   let is = IPM.toList es

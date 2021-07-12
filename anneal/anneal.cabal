@@ -1,7 +1,7 @@
 cabal-version:      2.4
 name:               anneal
 version:            0.1.0.0
-author:             mniip
+author:             ICFPC 2021 Team Powder
 maintainer:         mniip@mniip.com
 
 executable anneal

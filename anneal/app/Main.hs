@@ -1,4 +1,12 @@
 {-# LANGUAGE DerivingStrategies, BangPatterns, TypeApplications #-}
+-- Run simulated annealing
+--
+-- ./anneal <problem.json> <solution.json>
+--
+-- We try to minimize the score, and the constraints of vailidity are applied as penalties with good gradient properties
+-- so that a solution can temporarily jump out of a validity region to possibly land in another.
+-- We decrease temperature slowly and exponentially. If a solution appears stuck at a local minimum and we reach very
+-- low temperatures, we spontaneously reheat.
 module Main where
 
 import System.Environment

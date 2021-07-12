@@ -1,7 +1,7 @@
 cabal-version:      2.4
 name:               common
 version:            0.1.0.0
-author:             mniip
+author:             ICFPC 2021 Team Powder
 maintainer:         mniip@mniip.com
 
 library
@@ -22,6 +22,6 @@ library
 
 executable rate
     main-is:          Main.hs
-    build-depends:    base >= 4.14, io, common, containers, bytestring
+    build-depends:    base >= 4.14, io, common, bytestring
     hs-source-dirs:   rate
     default-language: Haskell2010

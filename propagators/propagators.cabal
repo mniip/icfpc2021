@@ -1,19 +1,19 @@
 cabal-version:      2.4
 name:               propagators
 version:            0.1.0.0
-author:             mniip
+author:             ICFPC 2021 Team Powder
 maintainer:         mniip@mniip.com
 
 library
     exposed-modules:    ICFPC.Propagators
-    build-depends:    base >= 4.14, containers, transformers, common, array, async, random
+    build-depends:    base >= 4.14, containers, transformers, common, array, random
     hs-source-dirs:   src
     default-language: Haskell2010
     ghc-options:      -O2
 
 executable propagate
     main-is:            Main.hs
-    build-depends:    base >=4.14, io, common, containers, bytestring, propagators, async, stm, random, array, split
+    build-depends:    base >=4.14, io, common, containers, bytestring, propagators, async, array, split
     hs-source-dirs:   app
     default-language: Haskell2010
     ghc-options:      -O2 -threaded

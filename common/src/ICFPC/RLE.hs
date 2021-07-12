@@ -1,11 +1,13 @@
 {-# LANGUAGE DerivingStrategies, BangPatterns #-}
+-- A set of ints encoded with Run-Length Encoding.
+-- These admit extremely fast intersection and union operations, as well as 
 module ICFPC.RLE where
 
 import GHC.Exts
 
--- run length encoded set of ints
--- a pair (a, b) in the sequence encodes an interval [a, b)
--- b must be greater than a, but smaller than the next a in the list
+-- Run a b means the segment [a, b)
+-- b is strictly greater than a, but strictly less than the a in the next Run if any
+-- The spine is strict
 data RLE = Stop | Run {-# UNPACK #-} !Int {-# UNPACK #-} !Int !RLE
   deriving stock (Eq, Ord, Show)
 
@@ -130,6 +132,7 @@ size = go 0
     go !n Stop = n
     go !n (Run a b is) = go (n + b - a) is
 
+-- If nonempty, return some element
 findAny :: RLE -> Int
 findAny (Run a _ _) = a
 
@@ -149,6 +152,7 @@ null :: RLE -> Bool
 null Stop = True
 null (Run _ _ _) = False
 
+-- Add x to all elements
 {-# INLINE shift #-}
 shift :: Int -> RLE -> RLE
 shift x = go
@@ -156,6 +160,7 @@ shift x = go
     go Stop = Stop
     go (Run a b is) = Run (a + x) (b + x) $ go is
 
+-- Subtract all elements from x
 reflect :: Int -> RLE -> RLE
 reflect x = go Stop
   where
@@ -163,6 +168,7 @@ reflect x = go Stop
     go !r Stop = r
     go !r (Run a b is) = go (Run (xp1 - b) (xp1 - a) r) is
 
+-- Check consistency of the data structure
 consistency :: RLE -> ()
 consistency = go
   where

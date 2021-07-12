@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+-- Create doubly linked lists with tied knots
 module ICFPC.DbList where
 
 -- make a cyclic doubly linked list
@@ -16,8 +17,10 @@ mkCycDbList f (v:u:us) = let
       node = f prev v next
       in (last, node, node:list)
 
+-- [1,2,3,4] -> [(1,2),(2,3),(3,4),(4,1)]
 cycPairs :: [a] -> [(a, a)]
 cycPairs = mkCycDbList (\_ x ~(y, _) -> (x, y))
 
+-- [1,2,3,4] -> [(1,2,3),(2,3,4),(3,4,1),(4,1,2)]
 cycTriples :: [a] -> [(a, a, a)]
 cycTriples = mkCycDbList (\_ x ~(y, z, _) -> (x, y, z))

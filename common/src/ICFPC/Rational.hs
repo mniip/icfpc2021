@@ -1,10 +1,12 @@
 {-# LANGUAGE DerivingStrategies #-}
+-- A couple utilities for working with rational points
 module ICFPC.Rational where
 
 import Data.Ratio
 
 import ICFPC.Vector
 
+-- Learned the hard way that Ratio Int is not enough...
 data Q2 = Q2 {-# UNPACK #-} !Rational !Rational
   deriving stock (Eq, Ord, Show)
 

@@ -1,9 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
+-- First implementation of a bunch of planar geometry utilities, and a bunch of random functions used in the editor
 module ICFPC.Geometry where
 
 import Data.List (tails, inits, sortBy, minimumBy, maximumBy, sort, group, foldl', intersect)
-import GHC.Exts
-import Debug.Trace (traceShow)
 import Data.Function (on)
 
 import qualified Data.IntMap as IM
@@ -67,6 +66,7 @@ properIntersectSegments ab@(a, b) cd@(c, d) =
 type Polygon = [Point]
 
 -- [1, 2, 3] -> [(1,2), (2,3), (3,1)]
+-- (this was slow and allocating, so I thought manually forcing list fusion could help)
 {-# INLINE cyclePairs #-}
 cyclePairs :: [a] -> [(a, a)]
 cyclePairs xs = foldr (\x f y z -> (y, x) : f x z) (\y z -> [(y, z)]) (tail xs) (head xs) (head xs)
@@ -98,7 +98,7 @@ segmentInPolygon ps s@(a, b) =
 
 type Dist = Int
 
--- Distance squared
+-- Distance squared, as used the problem spec
 dist :: Point -> Point -> Dist
 dist (x, y) (x', y') = (x-x')^2 + (y-y')^2
 
@@ -124,9 +124,11 @@ canStretch eps d s
 
 type Figure = [Point]
 
+-- rating as per the problem spec
 dislikes :: Polygon -> Figure -> Int
 dislikes hole pose = sum [ minimum [dist h v | v <- pose] | h <- hole]
 
+-- basic check for lying inside the polygon and edge lengths
 isValid :: Epsilon -> Polygon -> [(Int, Int)] -> Figure -> Figure -> Bool
 isValid eps hole edges origPose pose =
   all (segmentInPolygon hole) [(pose !! u, pose !! v) | (u, v) <- edges] &&

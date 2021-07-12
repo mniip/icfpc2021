@@ -1,7 +1,6 @@
 {-# LANGUAGE BangPatterns, DerivingStrategies, PatternSynonyms, ViewPatterns #-}
+-- Performance oriented implementation of vector arithmetic
 module ICFPC.Vector where
-
-import Data.Bits
 
 -- 2D vector: V2 x y
 data V2 = V2 {-# UNPACK #-} !Int {-# UNPACK #-} !Int

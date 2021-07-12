@@ -1,3 +1,6 @@
+-- A data structure for storing a "bitmap" of points on the plane
+-- We store it as a map from Y to a set of X's -- which is in turn Run Length Encoded
+-- Admits really fast union and intersection
 module ICFPC.RLE2D where
 
 import qualified Data.IntMap.Strict as IM
@@ -65,6 +68,7 @@ shift (V2 x y) (RLE2D m) = RLE2D $ IM.mapKeysMonotonic (+ y) $ IM.map (R.shift x
 reflect :: V2 -> RLE2D -> RLE2D
 reflect (V2 x y) (RLE2D m) = RLE2D $ IM.mapKeys (y -) $ IM.map (R.reflect x) m
 
+-- Check consistency of the data structure
 consistency :: RLE2D -> ()
 consistency (RLE2D m) = IM.foldl' (\() s -> if R.null s then error "N" else R.consistency s) () m
 

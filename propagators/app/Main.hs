@@ -1,4 +1,14 @@
 {-# LANGUAGE BangPatterns, ViewPatterns #-}
+-- A full search constraint solver using a propagator circuit for vertices and edges.
+--
+-- ./propagate <problem.json> <solution.json> [border]
+-- The border flag reads vertices from the solution, and assumes those lying on the boundary to be fixed/known.
+--
+-- We use propagators to solve constraints on vertices' locations, and edge "orientations". We do a backtracking search
+-- but on every step we try to conclude as much as possible without guessing.
+--
+-- This eventually iterates through all valid solutions to a problem, but we try to guide the search towards those
+-- solutions where vertices are on the border.
 module Main where
 
 import Control.Monad
@@ -9,11 +19,8 @@ import System.Exit
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Set as S
 import qualified Data.IntMap.Strict as IM
-import Data.List (foldl')
 import Control.Concurrent.Async
-import Control.Concurrent
 import qualified Data.Array as A
-import Data.Maybe
 import Data.List.Split
 
 import ICFPC.Propagators
@@ -22,13 +29,16 @@ import ICFPC.Polygon
 import ICFPC.Problem
 import ICFPC.Vector
 import ICFPC.Geometry (stretchAnnulus)
-import qualified ICFPC.RLE as R
 import qualified ICFPC.RLE2D as R2
 import qualified ICFPC.IntPairMap as IPM
 
 admissibleRing :: Epsilon -> Dist -> R2.RLE2D
 admissibleRing eps d = R2.fromList $ map packV2 $ stretchAnnulus eps d
 
+-- OLD/UNUSED
+-- Create a propagator circuit where every vertex corresponds to a node, and remembers its "admissible" locations.
+-- The set of locations is stored as a Run Length Encoded bitmap, on which we can efficiently do algebra.
+-- Based on this, and possible edge lengths, every node will inform others about where it thinks they can be.
 vertexCircuit :: ProblemSpec -> IO (V2 -> Bool, S2 -> Bool, CircuitState ZSet)
 vertexCircuit !spec = do
   circ <- newCircuitState
@@ -62,6 +72,12 @@ vertexCircuit !spec = do
   forM_ [0 .. numVs - 1] $ \i -> triggerNode circ i $ Finite insides
   pure ((`R2.member` insides), \(S2V2 a b) -> (b .-. a) `R2.member` validTargets a, circ)
 
+-- Create a propagator circuit where every vertex and edge corresponds to a node. Every vertex remembers its admissible
+-- locations, and every edge remembers its admissible "displacements".
+-- A vertex will update other vertices based on edges, and edges based on vertices.
+-- An edge will update one vertex based on the other, and if any edges form a triangle, two sides can be used to
+-- update the third.
+-- Sets of positions or displacements are stored as Run Length Encoded bitmaps on which we can efficiently do algebra.
 edgeVertexCircuit :: ProblemSpec -> IO (V2 -> Bool, S2 -> Bool, CircuitState ZSet, IM.IntMap Int, IPM.IntPairMap Int)
 edgeVertexCircuit !spec = do
   circ <- newCircuitState
@@ -191,6 +207,7 @@ main = do
 
   let nthread = 16
 
+  -- At the root, try to divvy up the problem evenly between threads
   circLists <- distribute nthread <$> partitionCircuit S.empty nthread circ
   forConcurrently_ circLists $ \circList -> do
     say $ "Thread for " <> show (length circList) <> " branches"

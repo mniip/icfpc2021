@@ -1,9 +1,11 @@
 {-# LANGUAGE BangPatterns, DerivingStrategies #-}
+-- A map where the key is an unordered pair of ints
 module ICFPC.IntPairMap where
 
 import qualified Data.IntMap as IM
 
--- contains both (a, b) and (b, a)
+-- An intmap indexed by the first int in the pair, which contains an intmap indexed by the second int.
+-- The structure contains two copies of the value to account for the two orientations.
 newtype IntPairMap a = IntPairMap (IM.IntMap (IM.IntMap a))
   deriving stock (Eq, Ord, Show)
 

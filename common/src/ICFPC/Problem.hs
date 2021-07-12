@@ -1,11 +1,10 @@
 {-# LANGUAGE DerivingStrategies, BangPatterns, RecordWildCards, LambdaCase #-}
-
+-- Utilities for a more efficient internal representation of a problem, and a validity/rating evaluator
 module ICFPC.Problem where
 
 import Control.Monad
 import Data.Monoid
 import Data.List (find, findIndices)
-import Data.Maybe
 import qualified Data.IntMap as IM
 import qualified Data.ByteString.Lazy as BSL
 
@@ -43,6 +42,7 @@ mkProblemSpec Problem{..} = ProblemSpec
 readProblem :: Int -> IO ProblemSpec
 readProblem n = mkProblemSpec . decodeProblem <$> BSL.readFile ("problems/" <> show n <> ".problem")
 
+-- Check solution taking bonuses into account. Superflex not implemented.
 checkSolutionWithCache :: (V2 -> Bool) -> (S2 -> Bool) -> ProblemSpec -> Pose -> Either String Int
 checkSolutionWithCache vInPoly sInPoly ProblemSpec{..} Pose{..} = do
   let (Any global, First mBreak, Any wallHack) = foldMap (\case

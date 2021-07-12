@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies, RecordWildCards, OverloadedStrings, LambdaCase #-}
+-- Utilities for encoding/decoding the problems in JSON format
 module ICFPC.JSON where
 
 import Data.Aeson
