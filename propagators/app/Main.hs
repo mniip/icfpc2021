@@ -155,7 +155,7 @@ edgeVertexCircuit !spec = do
 
 main :: IO ()
 main = do
-  [read -> probNumber, solFile] <- getArgs
+  (read -> probNumber):solFile:hints <- getArgs
   spec <- readProblem probNumber
 
   bestRef <- newIORef Nothing
@@ -163,6 +163,11 @@ main = do
   let say xs = putStrLn $ solFile <> ": " <> xs
 
   (vInPoly, sInPoly, circ, vMap, eMap) <- edgeVertexCircuit spec
+  when ("border" `elem` hints) $ do
+    pose <- decodePose <$> BSL.readFile solFile
+    forM_ (IM.toList vMap) $ \(i, iIdx) -> do
+      when ((packV2 $ poseVertices pose !! i) `elem` polygonVertices (psHole spec)) $ do
+        triggerNode circ iIdx $ Finite $ R2.singleton $ packV2 $ poseVertices pose !! i
   say "Created circuit"
 
   let
