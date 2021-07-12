@@ -147,6 +147,10 @@ randomPointMutation gen eps poly es vs = do
   i <- uniformRM (0, vlen-1) gen
   return $ IM.insert i v vs
 
+-- Try shifting all points
+allShifts :: Vertices -> [Vertices]
+allShifts vs = [fmap (.+. (dx, dy)) vs | dx <- [-1..1], dy <- [-1..1], not (dx == 0 && dy == 0)]
+
 randomInit :: IOGenM StdGen -> Polygon -> Int -> IO [Pair Int]
 randomInit gen poly numv = replicateM numv randomVertex
     where polyl = length poly
@@ -165,15 +169,23 @@ weightedChoice gen weight xs = do
       | ch - w <= 0 = x
       | otherwise = go (ch - w) ws xs
 
+twoFold :: (IOGenM StdGen -> Epsilon -> Polygon -> Edges -> Vertices -> IO Vertices) -> 
+            IOGenM StdGen -> Epsilon -> Polygon -> Edges -> Vertices -> IO Vertices
+twoFold fun gen eps poly es vs = do
+    vs' <- fun gen eps poly es vs
+    vs'' <- fun gen eps poly es vs'
+    return vs''
+
 pickNeighbor :: Epsilon -> Polygon -> Edges -> IOGenM StdGen -> Int -> Double -> Vertices -> IO Vertices
 pickNeighbor eps bound es gen k temp vs = do
   let is = IPM.toList es
       xs = map snd $ IM.toAscList vs
       blowUp = mkVertices $ putPointsAway eps is xs bound
       adjusted = mkVertices $ adjustPoints eps is xs []
-  annula <- replicateM k (randomMutation gen eps bound es vs)
+      shifted = allShifts vs
+  annula <- replicateM k (twoFold randomMutation gen eps bound es vs)
   sides <- replicateM k (randomEdgeMutation gen eps bound es vs)
   points <- replicateM k (randomPointMutation gen eps bound es vs)
-  let vss = [adjusted, {- blowUp, -} vs] ++ annula ++ sides ++ points
+  let vss = [adjusted, {- blowUp, -} vs] ++ shifted ++ annula ++ sides ++ points
   -- boltzmann distribution
   weightedChoice gen ((\e -> exp (-e / temp)) . energy eps bound es) vss

@@ -22,14 +22,14 @@ main = do
   let boundary = prHole problem
   let !edges = mkEdges (mkVertices $ figVertices $ prFigure problem) (figEdges $ prFigure problem)
   let !vertices = mkVertices $ case eSolution of
-        Left _ -> figVertices (prFigure problem)
+        Left _ -> centering boundary (figVertices (prFigure problem))
         Right sol -> poseVertices sol
   let !eps = prEpsilon problem
 
   gen <- newIOGenM =<< newStdGen
   let
     go best temp vs = do
-      vs_raw <- pickNeighbor eps boundary edges gen 64 temp vs
+      vs_raw <- pickNeighbor eps boundary edges gen 5 temp vs
       let vs' = IM.fromList . zip [0..] $ improvePoints eps (IPM.toList edges) (map snd $ IM.toAscList vs_raw) boundary
       let !e = energy eps boundary edges vs'
       let !sc@(validity, _, score) = (isValid eps boundary edges vs', e, dislikes boundary (IM.elems vs'))

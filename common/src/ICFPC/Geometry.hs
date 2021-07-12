@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 module ICFPC.Geometry where
 
-import Data.List (sortBy, minimumBy, maximumBy, sort, group, foldl', intersect)
+import Data.List (tails, inits, sortBy, minimumBy, maximumBy, sort, group, foldl', intersect)
 import GHC.Exts
 import Debug.Trace (traceShow)
 import Data.Function (on)
@@ -302,7 +302,8 @@ allChains eps is poly = filter (not . null) $ map (chainWithSides eps is) (cycle
 -- Pick a long set of chains covering the hole
 longChainCover :: Epsilon -> [(Int, Int, Dist)] -> Polygon -> Maybe Chain
 longChainCover eps is poly = if null chains then Nothing else Just $ pack [] chSorted
-    where chains = filter (\cs -> length cs > 2) $ allChains eps is poly -- TODO
+    where subchains = filter (not . null) . concat . map inits . tails
+          chains = filter (\cs -> length cs > 2) . concatMap subchains $ allChains eps is poly -- TODO
           chSorted = reverse $ sortBy (compare `on` length) chains
           chainToList :: Chain -> ([Int], [Point])
           chainToList xs = (concatMap (\((a, b), _) -> [a, b]) xs, concatMap (\(_, (p, q)) -> [p, q]) xs)
@@ -367,3 +368,11 @@ repelPoints eps is xs poly = map snd . IM.toList $ foldl go ps springs
                            maybeInsert j q (q .+. (qp `vdiv` len)) $ ys
                      GT -> ys
 
+centerOfMass :: Polygon -> Point
+centerOfMass ps = (foldl (.+.) (0,0) ps) `vdiv` (length ps)
+
+centering :: Polygon -> [Point] -> [Point]
+centering poly fig = map (dv .+.) fig
+    where cm = centerOfMass poly
+          cf = centerOfMass fig
+          dv = cm .-. cf
