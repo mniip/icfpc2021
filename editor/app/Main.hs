@@ -50,6 +50,7 @@ data World = World
   , wTriangulationElems :: Int
   , wView :: Bool
   , wSpring :: Bool
+  , wMagnet :: Bool
   , wEdgesToHoleEdges :: [[Point]] -- has size of wEdges
   , wShowCloseEdges :: Bool
   , wHideCloseEdgesNotUnderMouse :: Bool
@@ -119,6 +120,7 @@ main = do
       , wTriangulationElems = -1
       , wView = False
       , wSpring = False
+      , wMagnet = False
       , wEdgesToHoleEdges = calculateCloseEdges (prEpsilon problem) edges (cyclePairs hole)
       , wShowCloseEdges = False
       , wHideCloseEdgesNotUnderMouse = False
@@ -131,9 +133,12 @@ main = do
 onEvent :: Event -> World -> IO World
 onEvent (EventMotion coords) world = do
   newCoords <- getMousePoint world coords
-  let newVertices = if wSpring world
-                    then adjustPoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
-                    else wVertices world
+  let newVertices0 = if wSpring world
+                     then adjustPoints (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
+                     else wVertices world
+      newVertices = if wMagnet world
+                    then adjustCorners (wEpsilon world) (wEdges world) newVertices0 (wHole world)
+                    else newVertices0
       world' = world { wMouseCoords = newCoords, wVertices = newVertices }
   case wDragging world' of
     Nothing -> case wSelectionRect world' of
@@ -227,6 +232,12 @@ onEvent (EventKey (Char '2') Down _ coord) world = do
 onEvent (EventKey (Char '3') Down _ coord) world = do
   let newVertices = putPointsAway (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
   pure world { wVertices = newVertices }
+onEvent (EventKey (Char '4') Down _ coord) world = do
+  let newVertices = adjustCorners (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
+  pure world { wVertices = newVertices }
+onEvent (EventKey (Char '5') Down _ coord) world = do
+  let newVertices = mapLongestChain (wEpsilon world) (wEdges world) (wVertices world) (wHole world)
+  pure world { wVertices = newVertices }
 onEvent (EventKey (Char 'h') Up _ _) world = pure world { wHideSimple         = not (wHideSimple world) }
 onEvent (EventKey (Char 'd') Up _ _) world = pure world { wVisualizeDislikes  = not (wVisualizeDislikes world) }
 onEvent (EventKey (Char 'g') Up _ _) world = pure world { wDragMode           = nextDrag (wDragMode world) }
@@ -235,6 +246,7 @@ onEvent (EventKey (Char '>') Up _ _) world = pure world { wTriangulationElems = 
 onEvent (EventKey (Char '<') Up _ _) world = pure world { wTriangulationElems = max ((wTriangulationElems world) - 1) (-1)}
 onEvent (EventKey (Char 'v') Up _ _) world = pure world { wView           = not (wView world) }
 onEvent (EventKey (Char 'r') Up _ _) world = pure world { wSpring         = not (wSpring world) }
+onEvent (EventKey (Char 'm') Up _ _) world = pure world { wMagnet         = not (wMagnet world) }
 onEvent (EventKey (Char 'c') Up _ _) world = pure world { wShowCloseEdges = not (wShowCloseEdges world) }
 onEvent (EventKey (Char 'x') Up _ _) world = pure world { wHideCloseEdgesNotUnderMouse = not (wHideCloseEdgesNotUnderMouse world) }
 onEvent (EventKey (Char 'a') Up _ _) world = pure world { w_a_Pressed = False }

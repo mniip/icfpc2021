@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 module ICFPC.Geometry where
 
-import Data.List (minimumBy, maximumBy, sort, group, foldl')
+import Data.List (sortBy, minimumBy, maximumBy, sort, group, foldl', intersect)
 import GHC.Exts
 import Debug.Trace (traceShow)
 import Data.Function (on)
@@ -236,22 +236,6 @@ putPointsAway eps is xs bs = foldl go xs $ zip [0..] xs
 vdiv (x,y) l = ((x+1) `quot` l, (y+1) `quot` l)
 vmul (x,y) l = (x*l, y*l)
 
-{-
-adjustPoint :: Epsilon -> Dist -> Point -> Point -> Point
-adjustPoint eps d p q =
-    let qp = q .-. p
-        len = (2*(isqrt $ dist q p)) `div` 3
-    in case canStretch eps d (p, q) of
-           EQ -> p
-           LT -> p .-. (qp `vdiv` (1+len))
-           GT -> p .+. (qp `vdiv` (1+len))
-
-adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> [Point]
-adjustPoints eps is xs = zipWith go [0..] xs
-    where is' = is ++ map (\(a, b, c) -> (b, a, c)) is
-          go i q = foldl (\p (_, j, d) -> adjustPoint eps d p (xs !! j)) q (filter (\(j, _, _) -> i == j) is')
-          -}
-
 -- Stretch or contract edges
 adjustPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
 adjustPoints eps is xs poly = map snd . IM.toList $ foldl go ps is
@@ -270,4 +254,116 @@ adjustPoints eps is xs poly = map snd . IM.toList $ foldl go ps is
                            maybeInsert j q (q .+. (qp `vdiv` len)) $ ys
                      GT -> maybeInsert i p (p .+. (qp `vdiv` len)) .
                            maybeInsert j q (q .-. (qp `vdiv` len)) $ ys
+
+incident :: Eq a => (a, a) -> (a, a) -> Bool
+incident (a, b) (c, d) = a == c || a == d || b == c || b == d
+
+-- List indices of figure vertices, s.t. a corresponding edge matches a given segment
+matchingSides :: Epsilon -> [(Int, Int, Dist)] -> Segment -> [(Int, Int)]
+matchingSides eps is s = map (\(i, j, _) -> (i, j)) $ filter (\(i, j, d) -> canStretch eps d s == EQ) is
+
+longestChain :: Epsilon -> [(Int, Int, Dist)] -> Polygon -> [(Int, Int)]
+longestChain eps is poly = if null chainTree || null (head chainTree)
+                           then []
+                           else unroll [head $ head chainTree] (tail chainTree)
+    where sides = cyclePairs poly
+          chainTree = go [] sides
+          go :: [[(Int, Int)]] -> [Segment] -> [[(Int, Int)]]
+          go accum [] = accum
+          go accum (s:ss) = let ms = matchingSides eps is s
+                                prev = head accum
+                                cms = filter (\e -> any (incident e) prev) ms
+                            in if null accum
+                               then go [ms] ss
+                               else if null cms then accum else go (cms:accum) ss
+          unroll :: [(Int, Int)] -> [[(Int, Int)]] -> [(Int, Int)]
+          unroll [] _ = error "Empty accumulator"
+          unroll accum [] = accum
+          unroll accum (s:ss) =
+              let (left, _) = head accum
+                  inc = filter (\(a, b) -> a == left || b == left) s
+                  e = head inc
+                  swap (a, b) | a == left = (b, a)
+                              | otherwise = (a, b)
+              in if null inc then accum else unroll ((swap e):accum) ss
+
+type Chain = [((Int, Int), Segment)]
+
+chainWithSides :: Epsilon -> [(Int, Int, Dist)] -> Polygon -> Chain
+chainWithSides eps is poly = zip (longestChain eps is poly) (cyclePairs poly)
+
+cycleShifts :: [a] -> [[a]]
+cycleShifts xs = [(drop i xs) ++ take i xs | i <- [0..l-1]]
+    where l = length xs
+
+allChains :: Epsilon -> [(Int, Int, Dist)] -> Polygon -> [Chain]
+allChains eps is poly = filter (not . null) $ map (chainWithSides eps is) (cycleShifts poly)
+
+-- Pick a long set of chains covering the hole
+longChainCover :: Epsilon -> [(Int, Int, Dist)] -> Polygon -> Maybe Chain
+longChainCover eps is poly = if null chains then Nothing else Just $ pack [] chSorted
+    where chains = filter (\cs -> length cs > 2) $ allChains eps is poly -- TODO
+          chSorted = reverse $ sortBy (compare `on` length) chains
+          chainToList :: Chain -> ([Int], [Point])
+          chainToList xs = (concatMap (\((a, b), _) -> [a, b]) xs, concatMap (\(_, (p, q)) -> [p, q]) xs)
+          disjoint c1 c2 = let (c1f, c1h) = chainToList c1
+                               (c2f, c2h) = chainToList c2
+                           in null (intersect c1f c2f) && null (intersect c1h c2h)
+          pack accum [] = accum
+          pack accum (c:cs) = if disjoint accum c then pack (c ++ accum) cs else pack accum cs
+
+mapLongestChain :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+mapLongestChain eps is xs poly =
+    case chain of
+      Nothing -> xs
+      Just ys -> map snd . IM.toList $ foldl go ps ys
+    where ps = IM.fromList $ zip [0..] xs
+          chain = longChainCover eps is poly
+          go :: IM.IntMap Point -> ((Int, Int), Segment) -> IM.IntMap Point
+          go a ((i, j), (l, r)) = IM.insert i l $ IM.insert j r a
+
+commonPoint :: Eq a => (a, a) -> (a, a) -> [a]
+commonPoint (a, b) (c, d) = intersect [a, b] [c, d]
+
+adjustCorners :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+adjustCorners eps is xs poly = map snd . IM.toList $ foldl update ps cornersPoly
+    where numv = length xs
+          ps = IM.fromList $ zip [0..] xs
+          sides = cyclePairs poly
+          cornersPoly = cyclePairs sides
+          matchingEdges s = map (\(i, j, _) -> (i, j)) $ filter (\(i, j, d) -> canStretch eps d s == EQ) is
+          matchingCorners (s1, s2) = concat [commonPoint e1 e2 | e1 <- matchingEdges s1, e2 <- matchingEdges s2]
+          update :: IM.IntMap Point -> (Segment, Segment) -> IM.IntMap Point
+          update ys corner =
+              let mc = matchingCorners corner
+                  c = snd $ fst corner -- mc == ((_, c), (c, _))
+              in foldl (\zs -> magnet zs c) ys mc
+          magnet :: IM.IntMap Point -> Point -> Int -> IM.IntMap Point
+          magnet ys c i =
+              let p = ys IM.! i
+                  cp = c .-. p
+                  len = 1 + (isqrt $ dist c p)
+                  p' = p .+. (cp `vdiv` len)
+              in if p `elem` poly || p' `elem` poly
+                 then ys
+                 else IM.insert i p' ys
+
+repelPoints :: Epsilon -> [(Int, Int, Dist)] -> [Point] -> Polygon -> [Point]
+repelPoints eps is xs poly = map snd . IM.toList $ foldl go ps springs
+    where ps = IM.fromList $ zip [0..] xs
+          numv = length xs
+          springs = [(i, j, isqrt eps + 1) | i <- [0..numv-1], j <- [i+1..numv-1]]
+          go :: IM.IntMap Point -> (Int, Int, Dist) -> IM.IntMap Point
+          go ys (i, j, d) =
+              let p = ys IM.! i
+                  q = ys IM.! j
+                  qp = q .-. p
+                  len = 1 + ((2*(isqrt $ dist q p)) `div` 3)
+                  maybeInsert k r r' mp | r `elem` poly || r' `elem` poly = mp
+                                        | otherwise = IM.insert k r' mp
+              in case canStretch eps d (p, q) of
+                     EQ -> ys
+                     LT -> maybeInsert i p (p .-. (qp `vdiv` len)) .
+                           maybeInsert j q (q .+. (qp `vdiv` len)) $ ys
+                     GT -> ys
 
