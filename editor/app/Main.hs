@@ -55,6 +55,8 @@ data World = World
   , wShowCloseEdges :: Bool
   , wHideCloseEdgesNotUnderMouse :: Bool
   , w_a_Pressed :: Bool
+  , wHoleCircleRadius :: Int
+  , w_z_Pressed :: Bool
   }
 
 data DragMode = DragSimple | FollowDelta | NearestValid deriving (Eq)
@@ -125,6 +127,8 @@ main = do
       , wShowCloseEdges = False
       , wHideCloseEdgesNotUnderMouse = False
       , w_a_Pressed = False
+      , wHoleCircleRadius = 30
+      , w_z_Pressed = False
       }
     worldPicture
     onEvent
@@ -179,7 +183,7 @@ onEvent (EventKey (MouseButton LeftButton) Up _ _) world = do
         , wSelectionRect = Nothing
         , wSelection = if w_a_Pressed world then selection `S.union` (wSelection world) else selection
         }
-onEvent (EventKey (MouseButton WheelUp) Down _ coords) world = do
+onEvent (EventKey (MouseButton WheelUp) Down _ coords) world = if w_z_Pressed world then pure world { wHoleCircleRadius = wHoleCircleRadius world + 1 } else do
   wModifyViewPort world $ \vp -> do
     let oldScale = viewPortScale vp
     let newScale = oldScale * 1.2
@@ -188,7 +192,7 @@ onEvent (EventKey (MouseButton WheelUp) Down _ coords) world = do
       , viewPortTranslate = viewPortTranslate vp P.+ (1 / newScale P.* coords) P.- (1 / oldScale P.* coords)
       }
   pure world
-onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = do
+onEvent (EventKey (MouseButton WheelDown) Down _ coords) world = if w_z_Pressed world then pure world { wHoleCircleRadius = wHoleCircleRadius world - 1 } else do
   wModifyViewPort world $ \vp -> do
     let oldScale = viewPortScale vp
     let newScale = oldScale / 1.2
@@ -251,6 +255,8 @@ onEvent (EventKey (Char 'c') Up _ _) world = pure world { wShowCloseEdges = not 
 onEvent (EventKey (Char 'x') Up _ _) world = pure world { wHideCloseEdgesNotUnderMouse = not (wHideCloseEdgesNotUnderMouse world) }
 onEvent (EventKey (Char 'a') Up _ _) world = pure world { w_a_Pressed = False }
 onEvent (EventKey (Char 'a') Down _ _) world = pure world { w_a_Pressed = True }
+onEvent (EventKey (Char 'z') Up _ _) world = pure world { w_z_Pressed = False }
+onEvent (EventKey (Char 'z') Down _ _) world = pure world { w_z_Pressed = True }
 onEvent event world = pure world
 
 getMousePoint :: World -> (Float, Float) -> IO Point
@@ -287,7 +293,7 @@ worldPicture world = pure $ Pictures $
                                       WallHack -> orange
                                       SuperFlex -> cyan
                       in Color (withAlpha 0.5 color) $ Translate x y $ ThickCircle 1 2
-    rHoles = 30
+    rHoles = wHoleCircleRadius world
     edgesToHoles = if wHideCloseEdgesNotUnderMouse world then map (filter (\p -> dist p (wMouseCoords world) < rHoles * rHoles)) (wEdgesToHoleEdges world) else wEdgesToHoleEdges world
     similarEdges = if wShowCloseEdges world then [closeEdgesPictureHighlight (edgesLines (wEdges world) (wVertices world)) edgesToHoles, holeCircles] else []
     holeCircles = Pictures $ map (\(p, q) -> let (x, y) = fromIntegerPoint (middlePoint p q) in Translate x y $ Circle (fromIntegral rHoles)) (cyclePairs (wHole world))
